@@ -1,8 +1,0 @@
-{
-    "chat.tools.terminal.autoApprove": {
-        "/^pytest tests/test_features\\.py -q$/": {
-            "approve": true,
-            "matchCommandLine": true
-        }
-    }
-}

@@ -63,24 +63,13 @@ ApplicationWindow {
     function applyLayout(state) {
         maximized = ""
         leftPane.SplitView.preferredWidth = state.leftWidth || defaultLayout.leftWidth
-        classificationDock.SplitView.preferredHeight = state.classificationHeight || defaultLayout.classificationHeight
-        actionDock.SplitView.preferredHeight = state.actionsHeight || defaultLayout.actionsHeight
-    }
-
-    function resetLayout() {
-        classificationDock.dockInto(leftPane)
-        lowerNavDock.dockInto(leftPane)
-        editorDock.dockInto(rightPane)
-        actionDock.dockInto(rightPane)
-        classificationDock.SplitView.preferredHeight = defaultLayout.classificationHeight
-        actionDock.SplitView.preferredHeight = defaultLayout.actionsHeight
-        leftPane.SplitView.preferredWidth = defaultLayout.leftWidth
-        maximized = ""
+        classificationNavigator.SplitView.preferredHeight = state.classificationHeight || defaultLayout.classificationHeight
+        actionPane.SplitView.preferredHeight = state.actionsHeight || defaultLayout.actionsHeight
     }
 
     function currentLayout() {
-        return { leftWidth: leftPane.width, classificationHeight: classificationDock.height,
-                 actionsHeight: actionDock.height }
+        return { leftWidth: leftPane.width, classificationHeight: classificationNavigator.height,
+                 actionsHeight: actionPane.height }
     }
 
     function askNote(keys) {
@@ -106,12 +95,8 @@ ApplicationWindow {
 
     onClosing: function (close) {
         layoutSettings.leftWidth = leftPane.width
-        layoutSettings.classificationHeight = classificationDock.height
-        layoutSettings.actionsHeight = actionDock.height
-        layoutSettings.classificationOpen = classificationDock.open
-        layoutSettings.lowerNavOpen = lowerNavDock.open
-        layoutSettings.editorOpen = editorDock.open
-        layoutSettings.actionsOpen = actionDock.open
+        layoutSettings.classificationHeight = classificationNavigator.height
+        layoutSettings.actionsHeight = actionPane.height
         if (closeConfirmed || !backend.hasPackage)
             return
         close.accepted = false
@@ -128,10 +113,6 @@ ApplicationWindow {
         property real leftWidth: window.defaultLayout.leftWidth
         property real classificationHeight: window.defaultLayout.classificationHeight
         property real actionsHeight: window.defaultLayout.actionsHeight
-        property bool classificationOpen: true
-        property bool lowerNavOpen: true
-        property bool editorOpen: true
-        property bool actionsOpen: true
     }
 
     Shortcut { sequence: "F1"; onActivated: packageCtl.openUserManual() }
@@ -195,14 +176,6 @@ ApplicationWindow {
         Menu {
             id: viewMenu
             title: qsTr("&Ansicht")
-            Menu {
-                title: qsTr("Ansichten")
-                MenuItem { text: qsTr("Ordnungssystem-Navigator"); checkable: true; checked: classificationDock.open; onTriggered: checked ? classificationDock.open = true : classificationDock.closePanel() }
-                MenuItem { text: qsTr("Dossier- und Paket-Navigator"); checkable: true; checked: lowerNavDock.open; onTriggered: checked ? lowerNavDock.open = true : lowerNavDock.closePanel() }
-                MenuItem { text: qsTr("Editor"); checkable: true; checked: editorDock.open; onTriggered: checked ? editorDock.open = true : editorDock.closePanel() }
-                MenuItem { text: qsTr("Aktionsviews"); checkable: true; checked: actionDock.open; onTriggered: checked ? actionDock.open = true : actionDock.closePanel() }
-            }
-            MenuSeparator {}
             Action { text: qsTr("Perspektive speichern als..."); onTriggered: inputDialog.ask(qsTr("Perspektive speichern"), qsTr("Name"), "", name => packageCtl.savePerspective(name, window.currentLayout())) }
             Menu {
                 id: perspectiveMenu
@@ -234,7 +207,7 @@ ApplicationWindow {
                     onObjectRemoved: function (index, object) { perspectiveDeleteMenu.removeItem(object) }
                 }
             }
-            Action { text: qsTr("Perspektive zurücksetzen"); onTriggered: window.resetLayout() }
+            Action { text: qsTr("Perspektive zurücksetzen"); onTriggered: window.applyLayout(window.defaultLayout) }
             Action { text: qsTr("Maximierung aufheben"); enabled: window.maximized !== ""; onTriggered: window.maximized = "" }
         }
         Menu {
@@ -347,205 +320,159 @@ ApplicationWindow {
             id: leftPane
             SplitView.minimumWidth: 220
             orientation: Qt.Vertical
-            visible: ((classificationDock.open && classificationDock.parent === leftPane)
-                      || (lowerNavDock.open && lowerNavDock.parent === leftPane))
-                     && (window.maximized === "" || window.maximized === "classification" || window.maximized === "lowerNav")
+            visible: window.maximized === "" || window.maximized === "classification" || window.maximized === "lowerNav"
             SplitView.fillWidth: window.maximized !== ""
 
-            DockPanel {
-                id: classificationDock; objectName: "classificationDock"
-                title: qsTr("Ordnungssystem-Navigator")
-                open: layoutSettings.classificationOpen
-                visible: open && (floating || window.maximized === "" || window.maximized === "classification")
+            NavigatorView {
+                id: classificationNavigator; objectName: "classificationNavigator"
+                visible: window.maximized === "" || window.maximized === "classification"
                 SplitView.fillHeight: window.maximized === "classification"
-                SplitView.minimumHeight: 160
+                title: qsTr("Ordnungssystem-Navigator")
+                treeModel: classificationModel
+                currentFilter: backend.classificationFilter
+                contextMenu: classificationMenu
+                filters: [
+                    { mode: "main_groups", label: "HG", tip: qsTr("Nur Hauptgruppen") },
+                    { mode: "positions", label: "OSP", tip: qsTr("Nur Ordnungssystempositionen") },
+                    { mode: "positions_with_dossiers", label: "OSP+D", tip: qsTr("Nur Ordnungssystempositionen mit untergeordneten Dossiers") },
+                    { mode: "empty_dossiers", label: qsTr("leer"), tip: qsTr("Nur leere Dossiers") }
+                ]
+                onFilterRequested: function (mode) { backend.setClassificationFilter(mode) }
                 onTitleDoubleClicked: window.toggleMaximized("classification")
-
-                NavigatorView {
-                    id: classificationNavigator; objectName: "classificationNavigator"
-                    anchors.fill: parent
-                    showTitleBar: false
-                    title: qsTr("Ordnungssystem-Navigator")
-                    treeModel: classificationModel
-                    currentFilter: backend.classificationFilter
-                    contextMenu: classificationMenu
-                    acceptsFolderDrops: true
-                    filters: [
-                        { mode: "main_groups", label: "HG", tip: qsTr("Nur Hauptgruppen") },
-                        { mode: "positions", label: "OSP", tip: qsTr("Nur Ordnungssystempositionen") },
-                        { mode: "positions_with_dossiers", label: "OSP+D", tip: qsTr("Nur Ordnungssystempositionen mit untergeordneten Dossiers") },
-                        { mode: "empty_dossiers", label: qsTr("leer"), tip: qsTr("Nur leere Dossiers") }
-                    ]
-                    onFilterRequested: function (mode) { backend.setClassificationFilter(mode) }
-                    onFoldersDropped: function (folderKeys, targetKey) {
-                        const targetKind = classificationModel.kindAt(classificationModel.indexOfKey(targetKey))
-                        massAssignDialog.start(folderKeys, targetKey, targetKind,
-                                               qsTr("Auswahl im Ordnungssystem-Navigator"))
-                    }
-                    onDeleteRequested: classificationMenu.deleteSelection()
-                }
+                onDeleteRequested: classificationMenu.deleteSelection()
             }
 
-            DockPanel {
-                id: lowerNavDock; objectName: "lowerNavDock"
-                title: qsTr("Dossier- und Paket-Navigator")
-                open: layoutSettings.lowerNavOpen
-                visible: open && (floating || window.maximized === "" || window.maximized === "lowerNav")
+            ColumnLayout {
+                spacing: 0
+                visible: window.maximized === "" || window.maximized === "lowerNav"
                 SplitView.fillHeight: true
-                SplitView.minimumHeight: 160
-                onTitleDoubleClicked: window.toggleMaximized("lowerNav")
 
-                ColumnLayout {
-                    anchors.fill: parent
-                    spacing: 0
+                TabBar {
+                    id: navigatorTabs; objectName: "navigatorTabs"
+                    Layout.fillWidth: true
+                    TabButton { text: qsTr("Dossier-Navigator") }
+                    TabButton { text: qsTr("Paket-Navigator") }
+                }
 
-                    TabBar {
-                        id: navigatorTabs; objectName: "navigatorTabs"
-                        Layout.fillWidth: true
-                        TabButton { text: qsTr("Dossier-Navigator") }
-                        TabButton { text: qsTr("Paket-Navigator") }
+                StackLayout {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    currentIndex: navigatorTabs.currentIndex
+
+                    NavigatorView {
+                        id: dossierNavigator
+                        title: qsTr("Dossiers")
+                        treeModel: dossierModel
+                        columnRatios: [0.45, 0.18, 0.22, 0.15]
+                        contextMenu: dossierMenu
+                        onTitleDoubleClicked: window.toggleMaximized("lowerNav")
                     }
 
-                    StackLayout {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        currentIndex: navigatorTabs.currentIndex
-
-                        NavigatorView {
-                            id: dossierNavigator
-                            title: qsTr("Dossiers")
-                            showTitleBar: false
-                            treeModel: dossierModel
-                            columnRatios: [0.45, 0.18, 0.22, 0.15]
-                            contextMenu: dossierMenu
-                        }
-
-                        NavigatorView {
-                            id: packageNavigator; objectName: "packageNavigator"
-                            title: qsTr("Paket")
-                            showTitleBar: false
-                            treeModel: packageModel
-                            currentFilter: backend.packageFilter
-                            contextMenu: packageNavMenu
-                            acceptsFileDrops: backend.hasSip && !backend.readOnly
-                            draggableFolders: backend.hasPackage && !backend.readOnly
-                            filters: [
-                                { mode: "unassigned", label: qsTr("nicht zugewiesen"), tip: qsTr("Nur nicht zugewiesene Dateien") }
-                            ]
-                            onFilterRequested: function (mode) { backend.setPackageFilter(mode) }
-                            onDeleteRequested: packageNavMenu.deleteSelection()
-                            onFilesDropped: function (targetKey, urls) { packageNavMenu.importInto(targetKey, urls) }
-                        }
+                    NavigatorView {
+                        id: packageNavigator; objectName: "packageNavigator"
+                        title: qsTr("Paket")
+                        treeModel: packageModel
+                        currentFilter: backend.packageFilter
+                        contextMenu: packageNavMenu
+                        acceptsFileDrops: backend.hasSip && !backend.readOnly
+                        filters: [
+                            { mode: "unassigned", label: qsTr("nicht zugewiesen"), tip: qsTr("Nur nicht zugewiesene Dateien") }
+                        ]
+                        onFilterRequested: function (mode) { backend.setPackageFilter(mode) }
+                        onTitleDoubleClicked: window.toggleMaximized("lowerNav")
+                        onDeleteRequested: packageNavMenu.deleteSelection()
+                        onFilesDropped: function (targetKey, urls) { packageNavMenu.importInto(targetKey, urls) }
                     }
                 }
             }
         }
 
         SplitView {
-            id: rightPane
             orientation: Qt.Vertical
             SplitView.fillWidth: true
-            visible: ((editorDock.open && editorDock.parent === rightPane)
-                      || (actionDock.open && actionDock.parent === rightPane))
-                     && (window.maximized === "" || window.maximized === "editor" || window.maximized === "actions")
+            visible: window.maximized === "" || window.maximized === "editor" || window.maximized === "actions"
 
-            DockPanel {
-                id: editorDock; objectName: "editorDock"
-                title: qsTr("Editor")
-                open: layoutSettings.editorOpen
-                visible: open && (floating || window.maximized === "" || window.maximized === "editor")
+            MetadataEditor {
+                visible: window.maximized === "" || window.maximized === "editor"
                 SplitView.fillHeight: true
                 SplitView.minimumHeight: 200
+                onNewNoteRequested: function (key) { window.askNote([key]) }
+                onShowNotesRequested: function (key) { window.showNotes(key) }
                 onTitleDoubleClicked: window.toggleMaximized("editor")
 
-                MetadataEditor {
+                DropArea {
                     anchors.fill: parent
-                    onNewNoteRequested: function (key) { window.askNote([key]) }
-                    onShowNotesRequested: function (key) { window.showNotes(key) }
-                    onTitleDoubleClicked: window.toggleMaximized("editor")
-
-                    DropArea {
-                        anchors.fill: parent
-                        enabled: !backend.hasPackage
-                        onDropped: function (drop) {
-                            if (drop.hasUrls) {
-                                const url = drop.urls[0]
-                                guarded(() => backend.openPackage(url, false))
-                            }
+                    enabled: !backend.hasPackage
+                    onDropped: function (drop) {
+                        if (drop.hasUrls) {
+                            const url = drop.urls[0]
+                            guarded(() => backend.openPackage(url, false))
                         }
                     }
                 }
             }
 
-            DockPanel {
-                id: actionDock; objectName: "actionDock"
-                title: qsTr("Aktionsviews")
-                open: layoutSettings.actionsOpen
-                visible: open && (floating || window.maximized === "" || window.maximized === "actions")
+            ColumnLayout {
+                id: actionPane
                 SplitView.minimumHeight: 120
                 SplitView.fillHeight: window.maximized === "actions"
-                onTitleDoubleClicked: window.toggleMaximized("actions")
+                visible: window.maximized === "" || window.maximized === "actions"
+                spacing: 0
 
-                ColumnLayout {
-                    id: actionPane
-                    anchors.fill: parent
-                    spacing: 0
-
-                    TabBar {
-                        id: actionTabs; objectName: "actionTabs"
-                        Layout.fillWidth: true
-                        TabButton {
-                            text: qsTr("Validierungshilfe") + (backend.errorCount > 0 ? "  \u2716 " + backend.errorCount : "  \u2714")
-                            TapHandler { onDoubleTapped: window.toggleMaximized("actions") }
-                        }
-                        TabButton { text: qsTr("Notiz") + (notesTable.total > 0 ? " (" + notesTable.total + ")" : "") }
-                        TabButton { text: qsTr("Stichprobe") }
-                        TabButton { text: qsTr("Suche") }
-                        TabButton { text: qsTr("Änderungen") + (changesTable.total > 0 ? " (" + changesTable.total + ")" : "") }
+                TabBar {
+                    id: actionTabs; objectName: "actionTabs"
+                    Layout.fillWidth: true
+                    TabButton {
+                        text: qsTr("Validierungshilfe") + (backend.errorCount > 0 ? "  \u2716 " + backend.errorCount : "  \u2714")
+                        TapHandler { onDoubleTapped: window.toggleMaximized("actions") }
                     }
+                    TabButton { text: qsTr("Notiz") + (notesTable.total > 0 ? " (" + notesTable.total + ")" : "") }
+                    TabButton { text: qsTr("Stichprobe") }
+                    TabButton { text: qsTr("Suche") }
+                    TabButton { text: qsTr("Änderungen") + (changesTable.total > 0 ? " (" + changesTable.total + ")" : "") }
+                }
 
-                    StackLayout {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        currentIndex: actionTabs.currentIndex
+                StackLayout {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    currentIndex: actionTabs.currentIndex
 
-                        ValidationView {
-                            onExportRequested: { window.exportTarget = "validation"; exportTableDialog.open() }
+                    ValidationView {
+                        onExportRequested: { window.exportTarget = "validation"; exportTableDialog.open() }
+                    }
+                    NotesView {
+                        id: notesView
+                        onExportRequested: { window.exportTarget = "notes"; exportTableDialog.open() }
+                        onEditRequested: function (noteKey, text) {
+                            inputDialog.ask(qsTr("Notiz bearbeiten"), qsTr("Notiz"), text,
+                                            value => notesCtl.editNote(noteKey, value), { multiline: true })
                         }
-                        NotesView {
-                            id: notesView
-                            onExportRequested: { window.exportTarget = "notes"; exportTableDialog.open() }
-                            onEditRequested: function (noteKey, text) {
-                                inputDialog.ask(qsTr("Notiz bearbeiten"), qsTr("Notiz"), text,
-                                                value => notesCtl.editNote(noteKey, value), { multiline: true })
+                    }
+                    SampleView {
+                        onExportRequested: { window.exportTarget = "sample"; exportTableDialog.open() }
+                    }
+                    SearchView {
+                        id: searchView
+                        onExportRequested: { window.exportTarget = "search"; exportTableDialog.open() }
+                    }
+                    ColumnLayout {
+                        spacing: 0
+                        ToolBar {
+                            Layout.fillWidth: true
+                            RowLayout {
+                                anchors.fill: parent
+                                Label { leftPadding: 6; text: qsTr("%1 Änderungen seit dem letzten Speichern").arg(changesTable.total); Layout.fillWidth: true }
+                                ToolButton { text: qsTr("Kopieren"); onClicked: changesView.copySelection() }
+                                ToolButton { text: qsTr("Export"); onClicked: { window.exportTarget = "changes"; exportTableDialog.open() } }
                             }
                         }
-                        SampleView {
-                            onExportRequested: { window.exportTarget = "sample"; exportTableDialog.open() }
-                        }
-                        SearchView {
-                            id: searchView
-                            onExportRequested: { window.exportTarget = "search"; exportTableDialog.open() }
-                        }
-                        ColumnLayout {
-                            spacing: 0
-                            ToolBar {
-                                Layout.fillWidth: true
-                                RowLayout {
-                                    anchors.fill: parent
-                                    Label { leftPadding: 6; text: qsTr("%1 Änderungen seit dem letzten Speichern").arg(changesTable.total); Layout.fillWidth: true }
-                                    ToolButton { text: qsTr("Kopieren"); onClicked: changesView.copySelection() }
-                                    ToolButton { text: qsTr("Export"); onClicked: { window.exportTarget = "changes"; exportTableDialog.open() } }
-                                }
-                            }
-                            DataTable {
-                                id: changesView
-                                Layout.fillWidth: true
-                                Layout.fillHeight: true
-                                tableModel: changesTable
-                                columnRatios: [0.13, 0.1, 0.2, 0.15, 0.21, 0.21]
-                                onRowActivated: function (row) { backend.reveal(changesTable.recordAt(row).key) }
-                            }
+                        DataTable {
+                            id: changesView
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            tableModel: changesTable
+                            columnRatios: [0.13, 0.1, 0.2, 0.15, 0.21, 0.21]
+                            onRowActivated: function (row) { backend.reveal(changesTable.recordAt(row).key) }
                         }
                     }
                 }

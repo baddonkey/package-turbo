@@ -189,47 +189,6 @@ class StructureController(_Controller):
                                       "auf einer Stufe ohne Dossier liegen. Erhöhen Sie die Anzahl Dossier Stufen "
                                       "oder weisen Sie die Dateien einzeln zu.")
 
-    @Slot("QVariantList", int, int, int, bool, bool, "QVariantList", result="QVariantMap")
-    def previewMassAssign(self, folder_keys, target_key: int, osp_levels: int, dossier_levels: int,
-                          create_documents: bool, include_top: bool, folder_overrides) -> dict:
-        folders = [f for f in self._elements(folder_keys) if localname(f) == "ordner"]
-        target = self._elements([target_key])
-        if not folders or not target:
-            return {}
-        overrides = {
-            int(item["key"]): (int(item["ospLevels"]), int(item["dossierLevels"]))
-            for item in folder_overrides
-        }
-        plan = self._run("Massenzuweisung", lambda pkg: structure.mass_assign_preview(
-            pkg, folders, target[0], osp_levels, dossier_levels, create_documents, include_top, overrides))
-        if plan is None:
-            return {}
-        return {key: plan[key] for key in ("rows", "created", "assigned", "unassigned")}
-
-    @Slot("QVariantList", int, int, int, bool, bool, "QVariantList")
-    def massAssignWithOverrides(self, folder_keys, target_key: int, osp_levels: int, dossier_levels: int,
-                                create_documents: bool, include_top: bool, folder_overrides) -> None:
-        folders = [f for f in self._elements(folder_keys) if localname(f) == "ordner"]
-        target = self._elements([target_key])
-        if not folders or not target:
-            self.backend.message.emit("Massenzuweisung", "Wählen Sie im Paket-Navigator mindestens einen Ordner "
-                                      "und im Ordnungssystem-Navigator ein gültiges Ziel.")
-            return
-        overrides = {
-            int(item["key"]): (int(item["ospLevels"]), int(item["dossierLevels"]))
-            for item in folder_overrides
-        }
-        result = self._run("Massenzuweisung", lambda pkg: structure.mass_assign_with_overrides(
-            pkg, folders, target[0], osp_levels, dossier_levels, create_documents, include_top, overrides))
-        if result is None:
-            return
-        created, unassigned = result
-        self.backend.after_change(f"Massenzuweisung: {created} Objekt(e) erstellt", target_key)
-        if unassigned:
-            self.backend.message.emit("Massenzuweisung", f"{unassigned} Datei(en) wurden nicht zugewiesen, weil sie "
-                                      "auf einer Stufe ohne Dossier liegen. Erhöhen Sie die Anzahl Dossier Stufen "
-                                      "oder weisen Sie die Dateien einzeln zu.")
-
     @Slot(int, result="QVariantList")
     def massEditKinds(self, key: int) -> list:
         el = self._elements([key])

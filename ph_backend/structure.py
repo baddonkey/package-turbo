@@ -252,10 +252,10 @@ def propagate_time_span_up(pkg: SipPackage, el):
 
 # ---------------------------------------------------------------- mass assignment (8.3.1)
 
-def _validate_mass_target(pkg: SipPackage, target, osp_levels: int, dossier_levels: int) -> None:
+def mass_assign(pkg: SipPackage, folders, target, osp_levels: int, dossier_levels: int,
+                create_documents: bool = False, include_top: bool = False) -> tuple[int, int]:
+    """Builds positions and dossiers from folders of the package. Returns (created objects, unassigned files)."""
     target_kind = pkg.kind(target)
-    if osp_levels < 0 or dossier_levels < 0:
-        raise StructureError("Die Anzahl der Stufen darf nicht negativ sein.")
     if target_kind == "ordnungssystem" and osp_levels < 1:
         raise StructureError("Die Struktur muss mindestens eine Ordnungssystemposition enthalten "
                              "(Anzahl OSP Stufen mindestens 1).")
@@ -265,173 +265,47 @@ def _validate_mass_target(pkg: SipPackage, target, osp_levels: int, dossier_leve
         if pkg.children(target, "ordnungssystemposition") and osp_levels == 0:
             raise StructureError("Dossiers können nicht neben Ordnungssystempositionen angelegt werden.")
     if target_kind in ("dossier", "subdossier") and osp_levels > 0:
-        raise StructureError("Unter einem Dossier können keine OSP Stufen angelegt werden.")
+        raise StructureError("Unter einem Dossier können keine Ordnungssystempositionen angelegt werden.")
     if target_kind not in ("ordnungssystem", "ordnungssystemposition", "dossier", "subdossier"):
         raise StructureError("Die Massenzuweisung ist nur auf das Ordnungssystem, eine OSP oder ein Dossier möglich.")
 
+    created = 0
+    unassigned = 0
 
-def _mass_assign_plan(pkg: SipPackage, folders, target, osp_levels: int, dossier_levels: int,
-                      create_documents: bool, include_top: bool,
-                      overrides: dict[int, tuple[int, int]]) -> dict:
-    _validate_mass_target(pkg, target, osp_levels, dossier_levels)
-    folders = [folder for folder in folders if pkg.kind(folder) == "ordner"]
-    if not folders:
-        raise StructureError("Wählen Sie mindestens einen Ordner aus.")
+    def owner_for_files(holder):
+        return holder if pkg.kind(holder) in ("dossier", "subdossier") else None
 
-    folders = [folder for folder in folders if not any(
-        other is not folder and _is_ancestor(other, folder) for other in folders
-    )]
-    operations: list[dict] = []
-    rows: list[dict] = []
-    created = assigned = unassigned = 0
-    next_virtual = 0
+    def place_files(folder, holder) -> None:
+        nonlocal unassigned
+        files = pkg.children(folder, "datei")
+        owner = owner_for_files(holder)
+        if owner is None:
+            unassigned += len(files)
+            return
+        assign_files(pkg, owner, files, create_documents)
 
-    def add_node(parent_ref, parent_kind: str, folder, kind: str) -> str:
-        nonlocal created, next_virtual
-        if isinstance(parent_ref, int):
-            parent = pkg.element(parent_ref)
-            if parent is None:
-                raise StructureError("Das gewählte Zuweisungsziel ist nicht mehr verfügbar.")
-            _check_parent(pkg, parent, kind)
-        elif parent_kind not in CONTAINERS[kind]:
-            raise StructureError(f"{schema.KIND_LABELS.get(kind, kind)} kann nicht unter "
-                                 f"{schema.KIND_LABELS.get(parent_kind, parent_kind)} angelegt werden.")
-        ref = f"new-{next_virtual}"
-        next_virtual += 1
-        operations.append({
-            "type": "create",
-            "id": ref,
-            "parent": parent_ref,
-            "kind": kind,
-            "title": pkg.text(folder, "originalName") or pkg.text(folder, "name"),
-        })
-        created += 1
-        return ref
+    def walk(folder, parent, depth: int) -> None:
+        nonlocal created
+        title = pkg.text(folder, "originalName") or pkg.text(folder, "name")
+        holder = parent
+        if depth <= osp_levels:
+            holder = add_objects(pkg, parent, "ordnungssystemposition", 1, title)[0]
+            created += 1
+        elif depth <= osp_levels + dossier_levels:
+            holder = add_objects(pkg, parent, "dossier", 1, title)[0]
+            created += 1
+        place_files(folder, holder)
+        for sub in pkg.children(folder, "ordner"):
+            walk(sub, holder, depth + 1)
 
-    def place_files(folder, holder_ref, holder_kind: str) -> int:
-        nonlocal assigned, unassigned
-        files_in_folder = pkg.children(folder, "datei")
-        file_keys = [pkg.key(file_el) for file_el in files_in_folder]
-        if holder_kind in ("dossier", "subdossier"):
-            operations.append({
-                "type": "assign",
-                "owner": holder_ref,
-                "files": file_keys,
-                "documents": create_documents,
-            })
-            assigned += len(file_keys)
-            return len(file_keys)
-        unassigned += len(file_keys)
-        return 0
-
-    def walk(folder, parent_ref, parent_kind: str, depth: int, active_osp: int,
-             active_dossier: int, tree_depth: int) -> None:
-        key = pkg.key(folder)
-        if key in overrides:
-            active_osp, active_dossier = overrides[key]
-            depth = 1
-
-        holder_ref, holder_kind = parent_ref, parent_kind
-        stage, stage_number = "unassigned", 0
-        if depth <= active_osp:
-            holder_kind = "ordnungssystemposition"
-            holder_ref = add_node(parent_ref, parent_kind, folder, holder_kind)
-            stage, stage_number = "osp", depth
-        elif depth <= active_osp + active_dossier:
-            holder_kind = "dossier"
-            holder_ref = add_node(parent_ref, parent_kind, folder, holder_kind)
-            stage_number = depth - active_osp
-            stage = "dossier" if stage_number == 1 else "subdossier"
-        elif holder_kind in ("dossier", "subdossier"):
-            stage = "existingDossier"
-
-        file_count = place_files(folder, holder_ref, holder_kind)
-        rows.append({
-            "key": key,
-            "name": pkg.text(folder, "originalName") or pkg.text(folder, "name"),
-            "depth": tree_depth,
-            "stage": stage,
-            "stageNumber": stage_number,
-            "fileCount": len(pkg.children(folder, "datei")),
-            "assignedCount": file_count,
-            "ospLevels": active_osp,
-            "dossierLevels": active_dossier,
-        })
-        for subfolder in pkg.children(folder, "ordner"):
-            walk(subfolder, holder_ref, holder_kind, depth + 1, active_osp, active_dossier, tree_depth + 1)
-
-    target_ref, target_kind = pkg.key(target), pkg.kind(target)
     for folder in folders:
-        key = pkg.key(folder)
-        active_osp, active_dossier = overrides.get(key, (osp_levels, dossier_levels))
         if include_top:
-            walk(folder, target_ref, target_kind, 1, active_osp, active_dossier, 0)
+            walk(folder, target, 1)
         else:
-            file_count = place_files(folder, target_ref, target_kind)
-            rows.append({
-                "key": key,
-                "name": pkg.text(folder, "originalName") or pkg.text(folder, "name"),
-                "depth": 0,
-                "stage": "topExcluded",
-                "stageNumber": 0,
-                "fileCount": len(pkg.children(folder, "datei")),
-                "assignedCount": file_count,
-                "ospLevels": active_osp,
-                "dossierLevels": active_dossier,
-            })
-            for subfolder in pkg.children(folder, "ordner"):
-                walk(subfolder, target_ref, target_kind, 1, active_osp, active_dossier, 1)
-
-    return {
-        "operations": operations,
-        "rows": rows,
-        "created": created,
-        "assigned": assigned,
-        "unassigned": unassigned,
-    }
-
-
-def _apply_mass_assign_plan(pkg: SipPackage, plan: dict) -> tuple[int, int]:
-    created_elements: dict[str, object] = {}
-    for operation in plan["operations"]:
-        if operation["type"] == "create":
-            parent_ref = operation["parent"]
-            parent = pkg.element(parent_ref) if isinstance(parent_ref, int) else created_elements[parent_ref]
-            created_elements[operation["id"]] = add_objects(
-                pkg, parent, operation["kind"], 1, operation["title"]
-            )[0]
-            continue
-
-        owner_ref = operation["owner"]
-        owner = pkg.element(owner_ref) if isinstance(owner_ref, int) else created_elements[owner_ref]
-        file_elements = [pkg.element(key) for key in operation["files"]]
-        assign_files(pkg, owner, file_elements, operation["documents"])
-    return plan["created"], plan["unassigned"]
-
-
-def mass_assign(pkg: SipPackage, folders, target, osp_levels: int, dossier_levels: int,
-                create_documents: bool = False, include_top: bool = False) -> tuple[int, int]:
-    """Builds positions and dossiers from folders of the package. Returns (created objects, unassigned files)."""
-    plan = _mass_assign_plan(pkg, folders, target, osp_levels, dossier_levels,
-                             create_documents, include_top, {})
-    return _apply_mass_assign_plan(pkg, plan)
-
-
-def mass_assign_preview(pkg: SipPackage, folders, target, osp_levels: int, dossier_levels: int,
-                        create_documents: bool = False, include_top: bool = False,
-                        overrides: dict[int, tuple[int, int]] | None = None) -> dict:
-    """Returns the proposed hierarchy and file assignment counts without modifying the package."""
-    return _mass_assign_plan(pkg, folders, target, osp_levels, dossier_levels,
-                             create_documents, include_top, overrides or {})
-
-
-def mass_assign_with_overrides(pkg: SipPackage, folders, target, osp_levels: int, dossier_levels: int,
-                               create_documents: bool = False, include_top: bool = False,
-                               overrides: dict[int, tuple[int, int]] | None = None) -> tuple[int, int]:
-    """Applies the mass-assignment plan, including per-folder stage overrides."""
-    plan = mass_assign_preview(pkg, folders, target, osp_levels, dossier_levels,
-                               create_documents, include_top, overrides)
-    return _apply_mass_assign_plan(pkg, plan)
+            place_files(folder, target)
+            for sub in pkg.children(folder, "ordner"):
+                walk(sub, target, 1)
+    return created, unassigned
 
 
 # ---------------------------------------------------------------- CSV import (8.1.2)

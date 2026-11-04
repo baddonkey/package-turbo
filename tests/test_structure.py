@@ -100,40 +100,6 @@ def test_mass_assign_rules(new_pkg):
         structure.mass_assign(new_pkg, [], new_pkg.classification_system, 0, 1)
 
 
-def test_mass_assign_preview_and_folder_overrides(new_pkg, tmp_path):
-    pkg = new_pkg
-    source = tmp_path / "source"
-    (source / "top" / "area" / "subarea").mkdir(parents=True)
-    (source / "top" / "area" / "area.pdf").write_bytes(b"%PDF-1.4 area")
-    (source / "top" / "area" / "subarea" / "subarea.pdf").write_bytes(b"%PDF-1.4 subarea")
-    content = next(folder for folder in pkg.iter_kind("ordner") if pkg.text(folder, "name") == "content")
-    files.import_paths(pkg, content, [source])
-    top = next(folder for folder in pkg.children(content, "ordner") if pkg.text(folder, "name") == "source")
-    area = next(folder for folder in pkg.children(top, "ordner") if pkg.text(folder, "name") == "top")
-    area = pkg.children(area, "ordner")[0]
-    subarea = pkg.children(area, "ordner")[0]
-
-    before = len(list(pkg.iter_kind("dossier")))
-    plan = structure.mass_assign_preview(
-        pkg, [top], pkg.classification_system, 1, 1,
-        overrides={pkg.key(area): (0, 1)},
-    )
-    rows = {row["key"]: row for row in plan["rows"]}
-    assert rows[pkg.key(area)]["stage"] == "dossier"
-    assert rows[pkg.key(subarea)]["stage"] == "existingDossier"
-    assert plan["assigned"] == 2 and plan["unassigned"] == 0
-    assert len(list(pkg.iter_kind("dossier"))) == before
-
-    created, unassigned = structure.mass_assign_with_overrides(
-        pkg, [top], pkg.classification_system, 1, 1,
-        overrides={pkg.key(area): (0, 1)},
-    )
-    assert created == 2 and unassigned == 0
-    dossier = next(pkg.iter_kind("dossier"))
-    assert pkg.text(dossier, "titel") == "area"
-    assert len(list(dossier.iter(pkg.q("dokument")))) == 2
-
-
 def test_rename_delete_and_references(new_pkg, tmp_path):
     pkg = new_pkg
     content = next(o for o in pkg.iter_kind("ordner") if pkg.text(o, "name") == "content")

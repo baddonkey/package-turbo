@@ -205,7 +205,7 @@ Das **Viewmenü** der Navigatoren befindet sich in deren Titelzeile: Filter (z. 
 | Ansicht wiederherstellen | *Ansicht → Maximierung aufheben* bzw. *Perspektive zurücksetzen*. |
 | Bildlaufleisten | Erscheinen, wenn nicht alle Informationen sichtbar sind. |
 
-Navigatoren, Editor und Aktionsviews können über *Ansicht → Ansichten* ein- und ausgeblendet werden. Mit ↗ wird eine Ansicht in ein eigenes Fenster abgedockt; mit ↙ oder per Drag & Drop auf eine andere Ansicht wird sie wieder angedockt. Ziehen Sie den Titel einer Ansicht auf einen anderen Bereich, um sie dort einzuordnen. Dossier- und Paket-Navigator bleiben dabei als gemeinsame Ansicht gruppiert; die Aktionsviews bleiben untereinander als Register gruppiert.
+<span style="color:darkred">Abweichung: Navigatoren und Aktionsviews können nicht geschlossen, abgedockt oder per Drag & Drop an eine andere Position verschoben werden.</span>
 
 ### 7.3 Editor
 
@@ -224,7 +224,9 @@ Pflichtfelder sind mit `*` markiert. Fehlende Pflichtangaben und Felder mit Vali
 
 #### 7.3.1 Metadaten im Editor
 
-Register: *Überblick*, *Statistik*, *Validierung*, *Ordnungssystem*, *Ordnungssystemposition*, *Dossier* (auch Subdossiers), *Dokument*, *Vorgang*, *Archivische Vorgänge*, *Aktivität*, *Mappe*, *Datei*, *Ordner*.
+Register: *Überblick*, *Statistik*, *Validierung*, *Ordnungssystem*, *Ordnungssystemposition*, *Dossier* (auch Subdossiers), *Dokument*, *Vorgang*, *Aktivität*, *Mappe*, *Datei*, *Ordner*.
+
+<span style="color:darkred">Nicht umgesetzt: Es gibt kein Register *Archivische Vorgänge*.</span>
 
 #### 7.3.2 Metadaten zur Identifikation der Ablieferung
 
@@ -237,8 +239,6 @@ Die Register *Ordnungssystem* und *Ordnungssystemposition* zeigen das jeweils zu
 #### 7.3.4 Metadaten zu Dossiers, Dokumenten, Vorgängen, Aktivitäten, Mappen, Dateien und Ordnern
 
 Die entsprechenden Register zeigen das zuletzt gewählte Objekt des jeweiligen Typs. Welche Felder angezeigt werden, richtet sich nach dem XSD des Pakets (GEVER oder FILES, Standardversion).
-
-Das Register *Archivische Vorgänge* zeigt alle archivischen Vorgänge, die im Paket enthalten sind. Ihre Metadaten richten sich nach dem XSD des Pakets.
 
 #### 7.3.5 Element Zusatzdaten
 
@@ -429,14 +429,15 @@ Rechtsklick auf die oberste Zeile (Paket) → *Dateien ersetzen...* und den Ordn
 
 | Aktion | Vorgehen |
 |---|---|
-| 1. Ordner und Ziel wählen | Ordner im Paket-Navigator auf das Ziel (Ordnungssystem, OSP oder Dossier) im Ordnungssystem-Navigator ziehen. Alternativ können Sie weiterhin die Massenzuweisung über das Kontextmenü starten. |
-| 2. Vorschlag erstellen | *Anzahl OSP-Stufen* und *Anzahl Dossier-Stufen* eingeben; optional *Erzeuge Dokumente für Dateien* und *Obersten Ordner zuweisen* aktivieren. *Zuweisen* zeigt die geplante Struktur samt Stufe und Dateianzahl pro Ordner. |
-| 3. Vorschlag anpassen | Einen Ordner in der Vorschau auswählen, Stufen für diesen Ordner und seinen Unterbaum festlegen und *Zuweisen* wählen. *Zuweisung löschen* verwirft den Vorschlag, damit Sie ihn neu erstellen können. |
-| 4. Fertigstellen | *Fertigstellen* erstellt die Vorschau-Struktur im Ordnungssystem. Die Zuweisung kann danach nur durch Löschen der Struktur im Ordnungssystem-Navigator aufgehoben werden. |
+| 1. Ordner und Ziel wählen | Im Paket-Navigator die Ordner selektieren. Im Ordnungssystem-Navigator das Ziel (Ordnungssystem, OSP oder Dossier) selektieren und im Kontextmenü *Massenzuweisung der im Paket-Navigator gewählten Ordner...* wählen. Alternativ im Paket-Navigator *Massenzuweisung auf das im Ordnungssystem gewählte Objekt...*. |
+| 2. Struktur festlegen | *Anzahl OSP Stufen* und *Anzahl Dossier Stufen* eingeben; optional *Erzeuge Dokumente für Dateien* und *Obersten Ordner zuweisen*. |
+| 3. Fertigstellen | *Fertigstellen* erstellt die Struktur. Die Zuweisung kann nur durch Löschen der Struktur im Ordnungssystem-Navigator aufgehoben werden. |
 
 Ordner bis zur Stufe *Anzahl OSP Stufen* werden zu Ordnungssystempositionen, die folgenden Stufen zu Dossiers und Subdossiers. Dateien werden dem nächsten Dossier zugewiesen. Bei GEVER-Ablieferungen wird pro Datei ein Dokument erstellt, da GEVER-Dossiers Dateien nur über Dokumente enthalten dürfen.
 
-Der Vorschlag zeigt für jeden Ordner die vorgesehene OSP-/Dossier-Stufe und die Anzahl der dort enthaltenen beziehungsweise zugewiesenen Dateien. Dateien, die nach dem Vorschlag unzugewiesen bleiben, werden bereits in der Vorschau gezählt und nach dem Fertigstellen zusätzlich gemeldet.
+![Dialog Massenzuweisung](img/12-massenzuweisung.png)
+
+<span style="color:darkred">Abweichung: Die Ordner werden nicht per Drag & Drop, sondern über das Kontextmenü zugewiesen. Es gibt keine Vorschau des Vorschlags (*Zuweisen*, *Zuweisung löschen*), keine Stufenanzeige und keine Anpassung pro Ordner. Die Anzahl nicht zugewiesener Dateien wird nach dem Fertigstellen gemeldet.</span>
 
 #### 8.3.2 Fehlermeldungen bei der Massenzuweisung
 
@@ -858,7 +859,7 @@ Alle Berichte enthalten ein Deckblatt mit Aktenbildner, abliefernder Stelle, Abl
 | Perspektive anzeigen | *Ansicht → Perspektive öffnen* und die Perspektive wählen. |
 | Perspektive löschen | *Ansicht → Perspektive löschen*. |
 
-Ansichten lassen sich während der Sitzung durch Ziehen ihrer Titel in einen anderen Bereich verschieben oder als eigenes Fenster abdocken. Die gespeicherten Perspektiven enthalten weiterhin nur die Grössen der Bereiche; die Positionen und Fensterzustände der Ansichten werden nicht darin gespeichert.
+<span style="color:darkred">Abweichung: Navigatoren und Aktionsviews können nicht verschoben werden; eine Perspektive speichert nur die Grössen der Bereiche. Es gibt keine Standard-Perspektive und keine Symbole für Perspektiven in der Toolbar.</span>
 
 ### 16.2 Grundeinstellung wiederherstellen
 

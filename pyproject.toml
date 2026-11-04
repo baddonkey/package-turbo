@@ -30,7 +30,6 @@ ph_backend = ["resources/xsd/*.xsd"]
 files = [
     "main.py",
     "App/qmldir",
-    "App/DockPanel.qml",
     "App/Main.qml",
     "App/KindBadge.qml",
     "App/NavigatorView.qml",

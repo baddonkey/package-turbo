@@ -1,7 +1,6 @@
 import random
 
 import pytest
-from lxml import etree
 from PySide6.QtGui import QGuiApplication
 
 from ph_backend import notes, reports, sampling, search, statistics, xsd_info
@@ -46,29 +45,6 @@ def test_additional_data_in_editor_and_search(sip_dir):
     assert [h["objectName"] for h in found] == ["Dossier mit Datei"]
     editor.showElement(pkg.key(pkg.provenance))
     assert not next(s for s in editor.sections if s["kind"] == "provenienz")["canHaveAdditionalData"]
-
-
-def test_archival_processes_in_editor(sip_dir):
-    pkg = SipPackage.open_folder(sip_dir)
-    processes = []
-    for description in ("Erste Beschreibung", "Zweite Beschreibung"):
-        process = etree.SubElement(pkg.root, pkg.q("archivischerVorgang"))
-        etree.SubElement(process, pkg.q("beschreibung")).text = description
-        processes.append(process)
-
-    editor = MetadataEditor()
-    editor.set_package(pkg)
-    process_tab = next(tab for tab in editor.tabs if tab["id"] == "archivischerVorgang")
-    assert process_tab["label"] == "Archivische Vorgänge"
-
-    editor.showTab("archivischerVorgang")
-    sections = editor.sections
-    assert [section["kind"] for section in sections] == ["archivischerVorgang"] * 2
-    descriptions = [field["value"] for section in sections for field in section["primary"] + section["more"]
-                    if field["tag"] == "beschreibung"]
-    assert descriptions == ["Erste Beschreibung", "Zweite Beschreibung"]
-    editor.setField(sections[0]["key"], "beschreibung", "Bearbeitete Beschreibung")
-    assert pkg.text(processes[0], "beschreibung") == "Bearbeitete Beschreibung"
 
 
 @pytest.fixture(scope="module", autouse=True)

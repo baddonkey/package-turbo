@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='UTF-8'?>
 <!DOCTYPE TS>
 <TS version="2.1" language="fr_CH">
 <context>
@@ -11,7 +11,7 @@
     <message>
         <location filename="../AdditionalDataEditor.qml" line="29"/>
         <source>Generisches Element für weitere beschreibende Metadaten als Merkmale (Name und Wert).</source>
-        <translation>Élément générique pour d&apos;autres métadonnées descriptives sous forme de caractéristiques (nom et valeur).</translation>
+        <translation>Élément générique pour d'autres métadonnées descriptives sous forme de caractéristiques (nom et valeur).</translation>
     </message>
     <message>
         <location filename="../AdditionalDataEditor.qml" line="34"/>
@@ -53,29 +53,6 @@
     </message>
 </context>
 <context>
-    <name>DockPanel</name>
-    <message>
-        <location filename="../DockPanel.qml" line="81"/>
-        <source>Ziehen zum Verschieben; Doppelklick zum Maximieren</source>
-        <translation>Faire glisser pour déplacer ; double-cliquer pour agrandir</translation>
-    </message>
-    <message>
-        <location filename="../DockPanel.qml" line="88"/>
-        <source>Ansicht wieder andocken</source>
-        <translation>Réancrer la vue</translation>
-    </message>
-    <message>
-        <location filename="../DockPanel.qml" line="88"/>
-        <source>Ansicht abdocken</source>
-        <translation>Détacher la vue</translation>
-    </message>
-    <message>
-        <location filename="../DockPanel.qml" line="95"/>
-        <source>Ansicht schliessen</source>
-        <translation>Fermer la vue</translation>
-    </message>
-</context>
-<context>
     <name>EditMenu</name>
     <message>
         <location filename="../EditMenu.qml" line="10"/>
@@ -111,724 +88,698 @@
         <translation> (lecture seule)</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="87"/>
-        <location filename="../Main.qml" line="298"/>
+        <location filename="../Main.qml" line="76"/>
+        <location filename="../Main.qml" line="271"/>
         <source>Neue Notiz</source>
         <translation>Nouvelle note</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="87"/>
+        <location filename="../Main.qml" line="76"/>
         <source>Notiz zu %1 Objekt(en):</source>
         <translation>Note pour %1 objet(s) :</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="144"/>
+        <location filename="../Main.qml" line="125"/>
         <source>&amp;Paket</source>
         <translation>&amp;Paquet</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="145"/>
+        <location filename="../Main.qml" line="126"/>
         <source>Neues Paket erstellen...</source>
         <translation>Créer un nouveau paquet...</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="146"/>
+        <location filename="../Main.qml" line="127"/>
         <source>Paket öffnen...</source>
         <translation>Ouvrir le paquet...</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="147"/>
+        <location filename="../Main.qml" line="128"/>
         <source>Paket schreibgeschützt öffnen...</source>
         <translation>Ouvrir le paquet en lecture seule...</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="148"/>
+        <location filename="../Main.qml" line="129"/>
         <source>metadata.xml öffnen...</source>
         <translation>Ouvrir metadata.xml...</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="150"/>
-        <location filename="../Main.qml" line="271"/>
-        <location filename="../Main.qml" line="918"/>
+        <location filename="../Main.qml" line="131"/>
+        <location filename="../Main.qml" line="244"/>
+        <location filename="../Main.qml" line="845"/>
         <source>Speichern</source>
         <translation>Enregistrer</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="151"/>
+        <location filename="../Main.qml" line="132"/>
         <source>Paket zippen...</source>
         <translation>Zipper le paquet...</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="152"/>
+        <location filename="../Main.qml" line="133"/>
         <source>metadata.xml exportieren...</source>
         <translation>Exporter metadata.xml...</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="156"/>
-        <location filename="../Main.qml" line="280"/>
+        <location filename="../Main.qml" line="137"/>
+        <location filename="../Main.qml" line="253"/>
         <source>Reports</source>
         <translation>Rapports</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="170"/>
-        <location filename="../Main.qml" line="272"/>
-        <location filename="../Main.qml" line="882"/>
-        <location filename="../Main.qml" line="919"/>
+        <location filename="../Main.qml" line="151"/>
+        <location filename="../Main.qml" line="245"/>
+        <location filename="../Main.qml" line="809"/>
+        <location filename="../Main.qml" line="846"/>
         <source>Paket schliessen</source>
         <translation>Fermer le paquet</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="185"/>
+        <location filename="../Main.qml" line="166"/>
         <source>Beenden</source>
         <translation>Quitter</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="188"/>
+        <location filename="../Main.qml" line="169"/>
         <source>&amp;Bearbeiten</source>
         <translation>É&amp;dition</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="189"/>
+        <location filename="../Main.qml" line="170"/>
         <source>Rückgängig</source>
         <translation>Annuler la saisie</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="191"/>
+        <location filename="../Main.qml" line="172"/>
         <source>Ausschneiden</source>
         <translation>Couper</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="192"/>
-        <location filename="../Main.qml" line="537"/>
-        <location filename="../Main.qml" line="625"/>
+        <location filename="../Main.qml" line="173"/>
+        <location filename="../Main.qml" line="465"/>
+        <location filename="../Main.qml" line="552"/>
         <source>Kopieren</source>
         <translation>Copier</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="193"/>
+        <location filename="../Main.qml" line="174"/>
         <source>Einfügen</source>
         <translation>Coller</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="197"/>
+        <location filename="../Main.qml" line="178"/>
         <source>&amp;Ansicht</source>
         <translation>&amp;Affichage</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="206"/>
+        <location filename="../Main.qml" line="179"/>
         <source>Perspektive speichern als...</source>
         <translation>Enregistrer la perspective sous...</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="206"/>
+        <location filename="../Main.qml" line="179"/>
         <source>Perspektive speichern</source>
         <translation>Enregistrer la perspective</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="206"/>
+        <location filename="../Main.qml" line="179"/>
         <source>Name</source>
         <translation>Nom</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="209"/>
+        <location filename="../Main.qml" line="182"/>
         <source>Perspektive öffnen</source>
         <translation>Ouvrir la perspective</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="224"/>
+        <location filename="../Main.qml" line="197"/>
         <source>Perspektive löschen</source>
         <translation>Supprimer la perspective</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="237"/>
-        <location filename="../Main.qml" line="306"/>
+        <location filename="../Main.qml" line="210"/>
+        <location filename="../Main.qml" line="279"/>
         <source>Perspektive zurücksetzen</source>
         <translation>Réinitialiser la perspective</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="238"/>
+        <location filename="../Main.qml" line="211"/>
         <source>Maximierung aufheben</source>
-        <translation>Annuler l&apos;agrandissement</translation>
+        <translation>Annuler l'agrandissement</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="241"/>
+        <location filename="../Main.qml" line="214"/>
         <source>&amp;Extras</source>
         <translation>&amp;Outils</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="242"/>
+        <location filename="../Main.qml" line="215"/>
         <source>Suche...</source>
         <translation>Recherche...</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="243"/>
-        <location filename="../Main.qml" line="275"/>
-        <location filename="../Main.qml" line="844"/>
-        <location filename="../Main.qml" line="924"/>
+        <location filename="../Main.qml" line="216"/>
+        <location filename="../Main.qml" line="248"/>
+        <location filename="../Main.qml" line="771"/>
+        <location filename="../Main.qml" line="851"/>
         <source>Paket vollständig validieren</source>
         <translation>Valider entièrement le paquet</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="244"/>
+        <location filename="../Main.qml" line="217"/>
         <source>Zeiträume auf Ablieferung kumulieren</source>
         <translation>Cumuler les périodes au niveau du versement</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="246"/>
+        <location filename="../Main.qml" line="219"/>
         <source>Normalisierung</source>
         <translation>Normalisation</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="248"/>
+        <location filename="../Main.qml" line="221"/>
         <source>Datei- und Ordnernamen normalisieren...</source>
         <translation>Normaliser les noms de fichiers et de répertoires...</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="248"/>
+        <location filename="../Main.qml" line="221"/>
         <source>Unerlaubte Zeichen in allen Datei- und Ordnernamen ersetzen? Das Paket wird anschliessend gespeichert.</source>
         <translation>Remplacer les caractères non autorisés dans tous les noms ? Le paquet sera ensuite enregistré.</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="249"/>
+        <location filename="../Main.qml" line="222"/>
         <source>Pfadlängen bereinigen...</source>
         <translation>Raccourcir les chemins...</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="249"/>
+        <location filename="../Main.qml" line="222"/>
         <source>Alle Ordner (O1, O2, ...) und Dateien (P1, P2, ...) umbenennen? Die Originalnamen bleiben in den Metadaten erhalten.</source>
         <translation>Renommer tous les répertoires (O1, O2, ...) et fichiers (P1, P2, ...) ? Les noms originaux sont conservés dans les métadonnées.</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="250"/>
+        <location filename="../Main.qml" line="223"/>
         <source>Datei- und Ordnernamen denormalisieren...</source>
         <translation>Dénormaliser les noms de fichiers et de répertoires...</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="250"/>
+        <location filename="../Main.qml" line="223"/>
         <source>Alle Datei- und Ordnernamen auf die Originalnamen zurücksetzen?</source>
         <translation>Rétablir les noms originaux de tous les fichiers et répertoires ?</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="252"/>
+        <location filename="../Main.qml" line="225"/>
         <source>Stichprobe: Neue Auswahl</source>
         <translation>Échantillon : nouvelle sélection</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="254"/>
+        <location filename="../Main.qml" line="227"/>
         <source>Benutzervorgaben...</source>
         <translation>Préférences...</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="257"/>
+        <location filename="../Main.qml" line="230"/>
         <source>&amp;Hilfe</source>
         <translation>&amp;Aide</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="258"/>
-        <location filename="../Main.qml" line="923"/>
+        <location filename="../Main.qml" line="231"/>
+        <location filename="../Main.qml" line="850"/>
         <source>Benutzerdokumentation</source>
         <translation>Documentation utilisateur</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="259"/>
+        <location filename="../Main.qml" line="232"/>
         <source>Hilfe für die Tastenbelegung anzeigen</source>
-        <translation>Afficher l&apos;aide sur les raccourcis clavier</translation>
+        <translation>Afficher l'aide sur les raccourcis clavier</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="260"/>
-        <location filename="../Main.qml" line="930"/>
+        <location filename="../Main.qml" line="233"/>
+        <location filename="../Main.qml" line="857"/>
         <source>Über Package Turbo</source>
         <translation>À propos de Package Turbo</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="269"/>
+        <location filename="../Main.qml" line="242"/>
         <source>Neues Paket</source>
         <translation>Nouveau paquet</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="270"/>
-        <location filename="../Main.qml" line="917"/>
+        <location filename="../Main.qml" line="243"/>
+        <location filename="../Main.qml" line="844"/>
         <source>Paket öffnen</source>
         <translation>Ouvrir le paquet</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="302"/>
-        <location filename="../Main.qml" line="502"/>
+        <location filename="../Main.qml" line="275"/>
+        <location filename="../Main.qml" line="430"/>
         <source>Stichprobe</source>
         <translation>Échantillon</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="312"/>
+        <location filename="../Main.qml" line="285"/>
         <source>Einfache Suche ...</source>
         <translation>Recherche simple ...</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="328"/>
+        <location filename="../Main.qml" line="301"/>
         <source>%1 Objekt(e) ausgeschnitten</source>
         <translation>%1 objet(s) coupé(s)</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="334"/>
+        <location filename="../Main.qml" line="307"/>
         <source>%1 Fehler, %2 Warnungen</source>
         <translation>%1 erreurs, %2 avertissements</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="200"/>
-        <location filename="../Main.qml" line="357"/>
-        <location filename="../Main.qml" line="368"/>
+        <location filename="../Main.qml" line="330"/>
         <source>Ordnungssystem-Navigator</source>
         <translation>Navigateur du système de classement</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="199"/>
-        <source>Ansichten</source>
-        <translation>Vues</translation>
-    </message>
-    <message>
-        <location filename="../Main.qml" line="201"/>
-        <location filename="../Main.qml" line="391"/>
-        <source>Dossier- und Paket-Navigator</source>
-        <translation>Navigateur de dossiers et de paquets</translation>
-    </message>
-    <message>
-        <location filename="../Main.qml" line="202"/>
-        <location filename="../Main.qml" line="454"/>
-        <source>Editor</source>
-        <translation>Éditeur</translation>
-    </message>
-    <message>
-        <location filename="../Main.qml" line="203"/>
-        <location filename="../Main.qml" line="482"/>
-        <source>Aktionsviews</source>
-        <translation>Vues d’action</translation>
-    </message>
-    <message>
-        <location filename="../Main.qml" line="374"/>
+        <location filename="../Main.qml" line="335"/>
         <source>Nur Hauptgruppen</source>
         <translation>Groupes principaux seulement</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="375"/>
+        <location filename="../Main.qml" line="336"/>
         <source>Nur Ordnungssystempositionen</source>
         <translation>Positions seulement</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="376"/>
+        <location filename="../Main.qml" line="337"/>
         <source>Nur Ordnungssystempositionen mit untergeordneten Dossiers</source>
         <translation>Positions avec dossiers subordonnés seulement</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="377"/>
+        <location filename="../Main.qml" line="338"/>
         <source>leer</source>
         <translation>vide</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="377"/>
+        <location filename="../Main.qml" line="338"/>
         <source>Nur leere Dossiers</source>
         <translation>Dossiers vides seulement</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="405"/>
+        <location filename="../Main.qml" line="353"/>
         <source>Dossier-Navigator</source>
         <translation>Navigateur des dossiers</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="406"/>
+        <location filename="../Main.qml" line="354"/>
         <source>Paket-Navigator</source>
         <translation>Navigateur du paquet</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="416"/>
-        <location filename="../Main.qml" line="571"/>
+        <location filename="../Main.qml" line="364"/>
+        <location filename="../Main.qml" line="498"/>
         <source>Dossiers</source>
         <translation>Dossiers</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="425"/>
+        <location filename="../Main.qml" line="373"/>
         <source>Paket</source>
         <translation>Paquet</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="433"/>
+        <location filename="../Main.qml" line="379"/>
         <source>nicht zugewiesen</source>
         <translation>non attribués</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="433"/>
+        <location filename="../Main.qml" line="379"/>
         <source>Nur nicht zugewiesene Dateien</source>
         <translation>Fichiers non attribués seulement</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="498"/>
+        <location filename="../Main.qml" line="426"/>
         <source>Validierungshilfe</source>
         <translation>Aide à la validation</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="501"/>
-        <location filename="../Main.qml" line="519"/>
+        <location filename="../Main.qml" line="429"/>
+        <location filename="../Main.qml" line="447"/>
         <source>Notiz</source>
         <translation>Note</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="503"/>
-        <location filename="../Main.qml" line="920"/>
+        <location filename="../Main.qml" line="431"/>
+        <location filename="../Main.qml" line="847"/>
         <source>Suche</source>
         <translation>Recherche</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="504"/>
+        <location filename="../Main.qml" line="432"/>
         <source>Änderungen</source>
         <translation>Modifications</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="519"/>
+        <location filename="../Main.qml" line="447"/>
         <source>Notiz bearbeiten</source>
         <translation>Modifier la note</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="536"/>
+        <location filename="../Main.qml" line="464"/>
         <source>%1 Änderungen seit dem letzten Speichern</source>
         <translation>%1 modifications depuis le dernier enregistrement</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="538"/>
+        <location filename="../Main.qml" line="466"/>
         <source>Export</source>
         <translation>Exporter</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="571"/>
+        <location filename="../Main.qml" line="498"/>
         <source>Ordnungssystempositionen</source>
         <translation>Positions</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="572"/>
+        <location filename="../Main.qml" line="499"/>
         <source>Dokumente</source>
         <translation>Documents</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="572"/>
+        <location filename="../Main.qml" line="499"/>
         <source>Mappen</source>
         <translation>Classeurs</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="574"/>
+        <location filename="../Main.qml" line="501"/>
         <source>Mehrere neue %1</source>
         <translation>Plusieurs nouveaux %1</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="574"/>
+        <location filename="../Main.qml" line="501"/>
         <source>Anzahl</source>
         <translation>Nombre</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="583"/>
+        <location filename="../Main.qml" line="510"/>
         <source>Zuweisung der Datei zum Objekt löschen?</source>
-        <translation>Supprimer l&apos;attribution du fichier à l&apos;objet ?</translation>
+        <translation>Supprimer l'attribution du fichier à l'objet ?</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="586"/>
+        <location filename="../Main.qml" line="513"/>
         <source>%1 Objekt(e) mit allen darunterliegenden Elementen löschen?</source>
         <translation>Supprimer %1 objet(s) avec tous les éléments subordonnés ?</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="590"/>
+        <location filename="../Main.qml" line="517"/>
         <source>Neue Ordnungssystemposition</source>
         <translation>Nouvelle position</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="591"/>
+        <location filename="../Main.qml" line="518"/>
         <source>Mehrere neue Ordnungssystempositionen...</source>
         <translation>Plusieurs nouvelles positions...</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="592"/>
+        <location filename="../Main.qml" line="519"/>
         <source>Neues Dossier</source>
         <translation>Nouveau dossier</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="593"/>
+        <location filename="../Main.qml" line="520"/>
         <source>Mehrere neue Dossiers...</source>
         <translation>Plusieurs nouveaux dossiers...</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="594"/>
+        <location filename="../Main.qml" line="521"/>
         <source>Neues Dokument</source>
         <translation>Nouveau document</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="595"/>
+        <location filename="../Main.qml" line="522"/>
         <source>Mehrere neue Dokumente...</source>
         <translation>Plusieurs nouveaux documents...</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="596"/>
+        <location filename="../Main.qml" line="523"/>
         <source>Neue Mappe</source>
         <translation>Nouveau classeur</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="598"/>
+        <location filename="../Main.qml" line="525"/>
         <source>Neues Dokument für diese Datei</source>
         <translation>Nouveau document pour ce fichier</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="599"/>
+        <location filename="../Main.qml" line="526"/>
         <source>Neue Dokumente für die enthaltenen Dateien</source>
         <translation>Nouveaux documents pour les fichiers contenus</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="601"/>
+        <location filename="../Main.qml" line="528"/>
         <source>Im Paket-Navigator gewählte Dateien zuweisen</source>
         <translation>Attribuer les fichiers sélectionnés dans le navigateur du paquet</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="606"/>
+        <location filename="../Main.qml" line="533"/>
         <source>Massenzuweisung der im Paket-Navigator gewählten Ordner...</source>
         <translation>Attribution en masse des répertoires sélectionnés dans le navigateur du paquet...</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="611"/>
+        <location filename="../Main.qml" line="538"/>
         <source>Zuweisung löschen</source>
-        <translation>Supprimer l&apos;attribution</translation>
+        <translation>Supprimer l'attribution</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="613"/>
+        <location filename="../Main.qml" line="540"/>
         <source>Ausschneiden (Verschieben)</source>
         <translation>Couper (déplacer)</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="614"/>
+        <location filename="../Main.qml" line="541"/>
         <source>Einfügen (%1 Objekt(e))</source>
         <translation>Coller (%1 objet(s))</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="615"/>
+        <location filename="../Main.qml" line="542"/>
         <source>Nach oben</source>
         <translation>Vers le haut</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="616"/>
+        <location filename="../Main.qml" line="543"/>
         <source>Nach unten</source>
         <translation>Vers le bas</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="618"/>
+        <location filename="../Main.qml" line="545"/>
         <source>Massenmutation...</source>
         <translation>Mutation en masse...</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="619"/>
+        <location filename="../Main.qml" line="546"/>
         <source>Zeiträume kumulieren</source>
         <translation>Cumuler les périodes</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="620"/>
+        <location filename="../Main.qml" line="547"/>
         <source>Ordnungssystem neu nummerieren...</source>
         <translation>Renuméroter le système de classement...</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="622"/>
-        <location filename="../Main.qml" line="635"/>
-        <location filename="../Main.qml" line="681"/>
+        <location filename="../Main.qml" line="549"/>
+        <location filename="../Main.qml" line="562"/>
+        <location filename="../Main.qml" line="608"/>
         <source>Neue Notiz...</source>
         <translation>Nouvelle note...</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="623"/>
-        <location filename="../Main.qml" line="636"/>
-        <location filename="../Main.qml" line="682"/>
+        <location filename="../Main.qml" line="550"/>
+        <location filename="../Main.qml" line="563"/>
+        <location filename="../Main.qml" line="609"/>
         <source>Gehe zu Notiz</source>
         <translation>Aller à la note</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="624"/>
-        <location filename="../Main.qml" line="634"/>
-        <location filename="../Main.qml" line="683"/>
+        <location filename="../Main.qml" line="551"/>
+        <location filename="../Main.qml" line="561"/>
+        <location filename="../Main.qml" line="610"/>
         <source>Datei zeigen</source>
         <translation>Afficher le fichier</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="626"/>
-        <location filename="../Main.qml" line="685"/>
+        <location filename="../Main.qml" line="553"/>
+        <location filename="../Main.qml" line="612"/>
         <source>Löschen</source>
         <translation>Supprimer</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="633"/>
-        <location filename="../Main.qml" line="684"/>
+        <location filename="../Main.qml" line="560"/>
+        <location filename="../Main.qml" line="611"/>
         <source>Im Ordnungssystem anzeigen</source>
         <translation>Afficher dans le système de classement</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="637"/>
+        <location filename="../Main.qml" line="564"/>
         <source>Die selektierten Zeilen in die Zwischenablage kopieren</source>
         <translation>Copier les lignes sélectionnées dans le presse-papiers</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="650"/>
+        <location filename="../Main.qml" line="577"/>
         <source>%1 Ordner/Datei(en) endgültig aus dem Paket und dem Dateisystem löschen?</source>
         <translation>Supprimer définitivement %1 répertoire(s)/fichier(s) du paquet et du système de fichiers ?</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="659"/>
+        <location filename="../Main.qml" line="586"/>
         <source>Folgende Objekte existieren bereits: %1
 Zusammenführen und gleichnamige Dateien ersetzen?</source>
         <translation>Les objets suivants existent déjà : %1
 Fusionner et remplacer les fichiers du même nom ?</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="666"/>
+        <location filename="../Main.qml" line="593"/>
         <source>Neuer Ordner...</source>
         <translation>Nouveau répertoire...</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="666"/>
+        <location filename="../Main.qml" line="593"/>
         <source>Neuer Ordner</source>
         <translation>Nouveau répertoire</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="666"/>
+        <location filename="../Main.qml" line="593"/>
         <source>Name (erlaubt: A-Z a-z 0-9 _ . -)</source>
         <translation>Nom (autorisés : A-Z a-z 0-9 _ . -)</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="667"/>
+        <location filename="../Main.qml" line="594"/>
         <source>Dateien importieren...</source>
         <translation>Importer des fichiers...</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="668"/>
+        <location filename="../Main.qml" line="595"/>
         <source>Ordner importieren...</source>
         <translation>Importer un répertoire...</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="669"/>
+        <location filename="../Main.qml" line="596"/>
         <source>Umbenennen...</source>
         <translation>Renommer...</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="669"/>
+        <location filename="../Main.qml" line="596"/>
         <source>Umbenennen</source>
         <translation>Renommer</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="669"/>
+        <location filename="../Main.qml" line="596"/>
         <source>Neuer Name (der Originalname bleibt erhalten)</source>
         <translation>Nouveau nom (le nom original est conservé)</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="670"/>
+        <location filename="../Main.qml" line="597"/>
         <source>Datei ersetzen...</source>
         <translation>Remplacer le fichier...</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="671"/>
+        <location filename="../Main.qml" line="598"/>
         <source>Dateien ersetzen...</source>
         <translation>Remplacer les fichiers...</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="673"/>
+        <location filename="../Main.qml" line="600"/>
         <source>Dem im Ordnungssystem gewählten Objekt zuweisen</source>
-        <translation>Attribuer à l&apos;objet sélectionné dans le système de classement</translation>
+        <translation>Attribuer à l'objet sélectionné dans le système de classement</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="675"/>
+        <location filename="../Main.qml" line="602"/>
         <source>Massenzuweisung auf das im Ordnungssystem gewählte Objekt...</source>
-        <translation>Attribution en masse à l&apos;objet sélectionné dans le système de classement...</translation>
+        <translation>Attribution en masse à l'objet sélectionné dans le système de classement...</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="383"/>
-        <location filename="../Main.qml" line="678"/>
+        <location filename="../Main.qml" line="605"/>
         <source>Auswahl im Ordnungssystem-Navigator</source>
         <translation>Sélection dans le navigateur du système de classement</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="719"/>
+        <location filename="../Main.qml" line="646"/>
         <source>Paket schreibgeschützt öffnen</source>
         <translation>Ouvrir le paquet en lecture seule</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="719"/>
+        <location filename="../Main.qml" line="646"/>
         <source>Toplevel-Ordner des SIP auswählen</source>
         <translation>Choisir le répertoire principal du SIP</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="724"/>
+        <location filename="../Main.qml" line="651"/>
         <source>metadata.xml öffnen</source>
         <translation>Ouvrir metadata.xml</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="725"/>
-        <location filename="../Main.qml" line="741"/>
+        <location filename="../Main.qml" line="652"/>
+        <location filename="../Main.qml" line="668"/>
         <source>Metadaten (*.xml)</source>
         <translation>Métadonnées (*.xml)</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="730"/>
+        <location filename="../Main.qml" line="657"/>
         <source>Paket zippen</source>
         <translation>Zipper le paquet</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="733"/>
+        <location filename="../Main.qml" line="660"/>
         <source>ZIP-Archiv (*.zip)</source>
         <translation>Archive ZIP (*.zip)</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="738"/>
+        <location filename="../Main.qml" line="665"/>
         <source>metadata.xml exportieren</source>
         <translation>Exporter metadata.xml</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="746"/>
+        <location filename="../Main.qml" line="673"/>
         <source>Tabelle exportieren</source>
         <translation>Exporter le tableau</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="749"/>
+        <location filename="../Main.qml" line="676"/>
         <source>CSV für Excel (*.csv)</source>
         <translation>CSV pour Excel (*.csv)</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="754"/>
+        <location filename="../Main.qml" line="681"/>
         <source>Bericht speichern</source>
         <translation>Enregistrer le rapport</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="757"/>
+        <location filename="../Main.qml" line="684"/>
         <source>PDF (*.pdf)</source>
         <translation>PDF (*.pdf)</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="762"/>
+        <location filename="../Main.qml" line="689"/>
         <source>Dateien importieren</source>
         <translation>Importer des fichiers</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="768"/>
+        <location filename="../Main.qml" line="695"/>
         <source>Ordner importieren</source>
         <translation>Importer un répertoire</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="773"/>
+        <location filename="../Main.qml" line="700"/>
         <source>Datei ersetzen</source>
         <translation>Remplacer le fichier</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="778"/>
+        <location filename="../Main.qml" line="705"/>
         <source>Ordner mit den Ersatzdateien</source>
         <translation>Répertoire avec les fichiers de remplacement</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="782"/>
+        <location filename="../Main.qml" line="709"/>
         <source>Dateien ersetzen</source>
         <translation>Remplacer les fichiers</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="783"/>
+        <location filename="../Main.qml" line="710"/>
         <source>Es wurden keine gleichnamigen Dateien gefunden.</source>
-        <translation>Aucun fichier du même nom n&apos;a été trouvé.</translation>
+        <translation>Aucun fichier du même nom n'a été trouvé.</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="788"/>
+        <location filename="../Main.qml" line="715"/>
         <source>Für folgende Dateien wurde ein Ersatz gefunden:
 %1
 
@@ -839,108 +790,108 @@ Dateien ersetzen?</source>
 Remplacer les fichiers ?</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="801"/>
+        <location filename="../Main.qml" line="728"/>
         <source>Ordnungssystem neu nummerieren</source>
         <translation>Renuméroter le système de classement</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="806"/>
+        <location filename="../Main.qml" line="733"/>
         <source>Gliederungsvariante</source>
         <translation>Variante de classification</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="807"/>
+        <location filename="../Main.qml" line="734"/>
         <source>Freie Zehnergliederung</source>
         <translation>Classification décimale libre</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="807"/>
+        <location filename="../Main.qml" line="734"/>
         <source>Gliederung mit 1 bis 100 Positionen</source>
         <translation>Classification de 1 à 100 positions</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="817"/>
+        <location filename="../Main.qml" line="744"/>
         <source>Bestätigen</source>
         <translation>Confirmer</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="824"/>
+        <location filename="../Main.qml" line="751"/>
         <source>Ordner zusammenführen</source>
         <translation>Fusionner les répertoires</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="836"/>
-        <location filename="../Main.qml" line="853"/>
+        <location filename="../Main.qml" line="763"/>
+        <location filename="../Main.qml" line="780"/>
         <source>Gültigkeitsprüfung fehlgeschlagen</source>
         <translation>Échec du contrôle de validité</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="837"/>
+        <location filename="../Main.qml" line="764"/>
         <source>Das Paket entspricht noch nicht allen Anforderungen. Die Details sind in der Validierungshilfe ersichtlich.</source>
-        <translation>Le paquet ne remplit pas encore toutes les exigences. Les détails figurent dans l&apos;aide à la validation.</translation>
+        <translation>Le paquet ne remplit pas encore toutes les exigences. Les détails figurent dans l'aide à la validation.</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="845"/>
+        <location filename="../Main.qml" line="772"/>
         <source>Soll das Paket vollständig validiert werden?</source>
         <translation>Valider entièrement le paquet ?</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="846"/>
+        <location filename="../Main.qml" line="773"/>
         <source>Die Validierung kann bei grösseren Paketen einige Zeit in Anspruch nehmen.</source>
         <translation>La validation peut prendre un certain temps pour les paquets volumineux.</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="854"/>
+        <location filename="../Main.qml" line="781"/>
         <source>Alle Fehler sind behoben. Soll das Paket gespeichert und erneut vollständig validiert werden?</source>
         <translation>Toutes les erreurs sont corrigées. Enregistrer le paquet et le valider à nouveau entièrement ?</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="865"/>
+        <location filename="../Main.qml" line="792"/>
         <source>Änderungen speichern</source>
         <translation>Enregistrer les modifications</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="866"/>
+        <location filename="../Main.qml" line="793"/>
         <source>Die Metadaten wurden geändert. Sollen die Änderungen gespeichert werden?</source>
         <translation>Les métadonnées ont été modifiées. Enregistrer les modifications ?</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="883"/>
+        <location filename="../Main.qml" line="810"/>
         <source>Das Paket entspricht noch nicht vollständig den Anforderungen des Archivs. Trotzdem schliessen?</source>
         <translation>Le paquet ne remplit pas encore toutes les exigences des Archives. Fermer quand même ?</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="891"/>
+        <location filename="../Main.qml" line="818"/>
         <source>Bitte warten</source>
         <translation>Veuillez patienter</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="902"/>
+        <location filename="../Main.qml" line="829"/>
         <source>Abbrechen</source>
         <translation>Annuler</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="908"/>
+        <location filename="../Main.qml" line="835"/>
         <source>Tastenbelegung</source>
         <translation>Raccourcis clavier</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="916"/>
+        <location filename="../Main.qml" line="843"/>
         <source>Neues Paket erstellen</source>
         <translation>Créer un nouveau paquet</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="921"/>
+        <location filename="../Main.qml" line="848"/>
         <source>Kopieren (Text oder selektierte Zeilen)</source>
         <translation>Copier (texte ou lignes sélectionnées)</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="922"/>
+        <location filename="../Main.qml" line="849"/>
         <source>Selektierte Objekte im Navigator löschen</source>
         <translation>Supprimer les objets sélectionnés dans le navigateur</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="936"/>
+        <location filename="../Main.qml" line="863"/>
         <source>Package Turbo %1
 Erstellen, Bearbeiten und Prüfen von digitalen Ablieferungen
 (SIP gemäss eCH-0160, %2).
@@ -950,167 +901,63 @@ Dateiformate gemäss KOST-CECO Katalog archivischer Dateiformate (KaD).</source>
 Création, édition et contrôle de versements numériques
 (SIP selon eCH-0160, %2).
 
-Formats de fichiers selon le catalogue des formats d&apos;archivage de la KOST-CECO (KaD).</translation>
+Formats de fichiers selon le catalogue des formats d'archivage de la KOST-CECO (KaD).</translation>
     </message>
 </context>
 <context>
     <name>MassAssignDialog</name>
     <message>
-        <location filename="../MassAssignDialog.qml" line="83"/>
-        <source>OSP-Stufe %1</source>
-        <translation>Niveau de position %1</translation>
-    </message>
-    <message>
-        <location filename="../MassAssignDialog.qml" line="85"/>
-        <source>Dossier-Stufe %1</source>
-        <translation>Niveau de dossier %1</translation>
-    </message>
-    <message>
-        <location filename="../MassAssignDialog.qml" line="87"/>
-        <source>Subdossier-Stufe %1</source>
-        <translation>Niveau de sous-dossier %1</translation>
-    </message>
-    <message>
-        <location filename="../MassAssignDialog.qml" line="89"/>
-        <source>Im Dossier des übergeordneten Ordners</source>
-        <translation>Dans le dossier du répertoire parent</translation>
-    </message>
-    <message>
-        <location filename="../MassAssignDialog.qml" line="91"/>
-        <source>Obersten Ordner nicht zuweisen</source>
-        <translation>Ne pas attribuer le répertoire supérieur</translation>
-    </message>
-    <message>
-        <location filename="../MassAssignDialog.qml" line="92"/>
-        <source>Dateien bleiben unzugewiesen</source>
-        <translation>Les fichiers restent sans attribution</translation>
-    </message>
-    <message>
-        <location filename="../MassAssignDialog.qml" line="95"/>
+        <location filename="../MassAssignDialog.qml" line="24"/>
         <source>Massenzuweisung</source>
         <translation>Attribution en masse</translation>
     </message>
     <message>
-        <location filename="../MassAssignDialog.qml" line="110"/>
-        <location filename="../MassAssignDialog.qml" line="180"/>
+        <location filename="../MassAssignDialog.qml" line="33"/>
         <source>Ordner</source>
         <translation>Répertoires</translation>
     </message>
     <message>
-        <location filename="../MassAssignDialog.qml" line="111"/>
+        <location filename="../MassAssignDialog.qml" line="34"/>
         <source>%1 ausgewählt</source>
         <translation>%1 sélectionné(s)</translation>
     </message>
     <message>
-        <location filename="../MassAssignDialog.qml" line="112"/>
+        <location filename="../MassAssignDialog.qml" line="35"/>
         <source>Ziel</source>
         <translation>Cible</translation>
     </message>
     <message>
-        <location filename="../MassAssignDialog.qml" line="115"/>
-        <source>Anzahl OSP-Stufen</source>
+        <location filename="../MassAssignDialog.qml" line="38"/>
+        <source>Anzahl OSP Stufen</source>
         <translation>Nombre de niveaux de positions</translation>
     </message>
     <message>
-        <location filename="../MassAssignDialog.qml" line="123"/>
-        <source>Anzahl Dossier-Stufen</source>
+        <location filename="../MassAssignDialog.qml" line="45"/>
+        <source>Anzahl Dossier Stufen</source>
         <translation>Nombre de niveaux de dossiers</translation>
     </message>
     <message>
-        <location filename="../MassAssignDialog.qml" line="149"/>
-        <source>Ordner werden bis zur angegebenen OSP-Stufe zu Ordnungssystempositionen und danach zu Dossiers bzw. Subdossiers. Klicken Sie in der Vorschau einen Ordner an, um die Stufen für diesen Ordner und seinen Unterbaum individuell anzupassen.</source>
-        <translation>Les répertoires jusqu’au niveau de position indiqué deviennent des positions de classement, puis des dossiers ou sous-dossiers. Cliquez sur un répertoire dans l’aperçu pour ajuster individuellement les niveaux de ce répertoire et de son arborescence.</translation>
-    </message>
-    <message>
-        <location filename="../MassAssignDialog.qml" line="156"/>
-        <source>Vorschau der Zuweisung</source>
-        <translation>Aperçu de l’attribution</translation>
-    </message>
-    <message>
-        <location filename="../MassAssignDialog.qml" line="157"/>
-        <location filename="../MassAssignDialog.qml" line="262"/>
-        <source>Zuweisen</source>
-        <translation>Attribuer</translation>
-    </message>
-    <message>
-        <location filename="../MassAssignDialog.qml" line="158"/>
-        <source>Zuweisung löschen</source>
-        <translation>Supprimer l&apos;attribution</translation>
-    </message>
-    <message>
-        <location filename="../MassAssignDialog.qml" line="165"/>
-        <source>Einstellungen geändert. Aktualisieren Sie den Vorschlag mit «Zuweisen».</source>
-        <translation>Les paramètres ont changé. Actualisez la proposition avec « Attribuer ».</translation>
-    </message>
-    <message>
-        <location filename="../MassAssignDialog.qml" line="173"/>
-        <source>%1 Struktur-Elemente, %2 Dateien zugewiesen, %3 Dateien bleiben unzugewiesen</source>
-        <translation>%1 éléments de structure, %2 fichiers attribués, %3 fichiers sans attribution</translation>
-    </message>
-    <message>
-        <location filename="../MassAssignDialog.qml" line="181"/>
-        <source>Vorgesehene Stufe</source>
-        <translation>Niveau prévu</translation>
-    </message>
-    <message>
-        <location filename="../MassAssignDialog.qml" line="182"/>
-        <source>Dateien auf dieser Stufe</source>
-        <translation>Fichiers à ce niveau</translation>
-    </message>
-    <message>
-        <location filename="../MassAssignDialog.qml" line="222"/>
-        <source>%1 (%2 zugewiesen)</source>
-        <translation>%1 (%2 attribué(s))</translation>
-    </message>
-    <message>
-        <location filename="../MassAssignDialog.qml" line="241"/>
-        <source>Stufen für den ausgewählten Ordner und seinen Unterbaum</source>
-        <translation>Niveaux pour le répertoire sélectionné et son arborescence</translation>
-    </message>
-    <message>
-        <location filename="../MassAssignDialog.qml" line="242"/>
-        <source>Wählen Sie einen Ordner, um die Stufen individuell anzupassen.</source>
-        <translation>Sélectionnez un répertoire pour ajuster individuellement les niveaux.</translation>
-    </message>
-    <message>
-        <location filename="../MassAssignDialog.qml" line="245"/>
-        <source>OSP</source>
-        <translation>Position</translation>
-    </message>
-    <message>
-        <location filename="../MassAssignDialog.qml" line="253"/>
-        <source>Dossier</source>
-        <translation>Dossier</translation>
-    </message>
-    <message>
-        <source>Anzahl OSP Stufen</source>
-        <translation type="vanished">Nombre de niveaux de positions</translation>
-    </message>
-    <message>
-        <source>Anzahl Dossier Stufen</source>
-        <translation type="vanished">Nombre de niveaux de dossiers</translation>
-    </message>
-    <message>
-        <location filename="../MassAssignDialog.qml" line="133"/>
+        <location filename="../MassAssignDialog.qml" line="48"/>
         <source>Erzeuge Dokumente für Dateien</source>
         <translation>Créer des documents pour les fichiers</translation>
     </message>
     <message>
-        <location filename="../MassAssignDialog.qml" line="139"/>
+        <location filename="../MassAssignDialog.qml" line="49"/>
         <source>Obersten Ordner zuweisen</source>
         <translation>Attribuer le répertoire supérieur</translation>
     </message>
     <message>
+        <location filename="../MassAssignDialog.qml" line="56"/>
         <source>Ordner bis zur Stufe «OSP Stufen» werden zu Ordnungssystempositionen, die folgenden Stufen zu Dossiers und Subdossiers. Dateien werden dem nächsten Dossier zugewiesen; bei GEVER-Ablieferungen wird pro Datei ein Dokument erstellt. Die Zuweisung kann nur durch Löschen der Struktur im Ordnungssystem-Navigator aufgehoben werden.</source>
-        <translation type="vanished">Les répertoires jusqu&apos;au niveau « niveaux de positions » deviennent des positions, les niveaux suivants des dossiers et sous-dossiers. Les fichiers sont attribués au dossier le plus proche ; pour les versements GEVER, un document est créé par fichier. L&apos;attribution ne peut être annulée qu&apos;en supprimant la structure dans le navigateur du système de classement.</translation>
+        <translation>Les répertoires jusqu'au niveau « niveaux de positions » deviennent des positions, les niveaux suivants des dossiers et sous-dossiers. Les fichiers sont attribués au dossier le plus proche ; pour les versements GEVER, un document est créé par fichier. L'attribution ne peut être annulée qu'en supprimant la structure dans le navigateur du système de classement.</translation>
     </message>
     <message>
-        <location filename="../MassAssignDialog.qml" line="271"/>
+        <location filename="../MassAssignDialog.qml" line="64"/>
         <source>Fertigstellen</source>
         <translation>Terminer</translation>
     </message>
     <message>
-        <location filename="../MassAssignDialog.qml" line="275"/>
+        <location filename="../MassAssignDialog.qml" line="65"/>
         <source>Abbrechen</source>
         <translation>Annuler</translation>
     </message>
@@ -1150,12 +997,12 @@ Formats de fichiers selon le catalogue des formats d&apos;archivage de la KOST-C
     <message>
         <location filename="../MassEditDialog.qml" line="61"/>
         <source>Eintrag in allen Objekten löschen</source>
-        <translation>Supprimer l&apos;entrée dans tous les objets</translation>
+        <translation>Supprimer l'entrée dans tous les objets</translation>
     </message>
     <message>
         <location filename="../MassEditDialog.qml" line="67"/>
         <source>Die Änderung wirkt sich auf das gewählte Objekt und alle Objekte dieses Typs darunter aus.</source>
-        <translation>La modification s&apos;applique à l&apos;objet sélectionné et à tous les objets de ce type en dessous.</translation>
+        <translation>La modification s'applique à l'objet sélectionné et à tous les objets de ce type en dessous.</translation>
     </message>
     <message>
         <location filename="../MassEditDialog.qml" line="73"/>
@@ -1217,112 +1064,107 @@ Formats de fichiers selon le catalogue des formats d&apos;archivage de la KOST-C
         <translation>Forme :</translation>
     </message>
     <message>
-        <location filename="../MetadataEditor.qml" line="219"/>
-        <source>Das Paket enthält keine archivischen Vorgänge.</source>
-        <translation>Le paquet ne contient aucun processus archivistique.</translation>
-    </message>
-    <message>
-        <location filename="../MetadataEditor.qml" line="220"/>
+        <location filename="../MetadataEditor.qml" line="218"/>
         <source>Wählen Sie in einem Navigator ein Objekt aus, um dessen Metadaten anzuzeigen.</source>
         <translation>Sélectionnez un objet dans un navigateur pour afficher ses métadonnées.</translation>
     </message>
     <message>
-        <location filename="../MetadataEditor.qml" line="252"/>
+        <location filename="../MetadataEditor.qml" line="250"/>
         <source>(nur Anzeige)</source>
         <translation>(affichage seulement)</translation>
     </message>
     <message>
-        <location filename="../MetadataEditor.qml" line="265"/>
+        <location filename="../MetadataEditor.qml" line="263"/>
         <source>Neue Notiz...</source>
         <translation>Nouvelle note...</translation>
     </message>
     <message>
-        <location filename="../MetadataEditor.qml" line="270"/>
+        <location filename="../MetadataEditor.qml" line="268"/>
         <source>Gehe zu Notiz</source>
         <translation>Aller à la note</translation>
     </message>
     <message>
-        <location filename="../MetadataEditor.qml" line="294"/>
+        <location filename="../MetadataEditor.qml" line="292"/>
         <source>Weitere Angaben</source>
         <translation>Autres indications</translation>
     </message>
     <message>
-        <location filename="../MetadataEditor.qml" line="322"/>
+        <location filename="../MetadataEditor.qml" line="320"/>
         <source>Vergleich von Zeiträumen</source>
         <translation>Comparaison des périodes</translation>
     </message>
     <message>
-        <location filename="../MetadataEditor.qml" line="330"/>
+        <location filename="../MetadataEditor.qml" line="328"/>
         <source>Angaben zur Aktenführung</source>
         <translation>Indications sur la gestion des documents</translation>
     </message>
     <message>
-        <location filename="../MetadataEditor.qml" line="334"/>
+        <location filename="../MetadataEditor.qml" line="332"/>
         <source>Detailinformation Ordnungssystem (Positionen pro Stufe)</source>
         <translation>Détail système de classement (positions par niveau)</translation>
     </message>
     <message>
-        <location filename="../MetadataEditor.qml" line="338"/>
+        <location filename="../MetadataEditor.qml" line="336"/>
         <source>Detailinformation Dossier (Subdossiers pro Stufe)</source>
         <translation>Détail dossier (sous-dossiers par niveau)</translation>
     </message>
     <message>
-        <location filename="../MetadataEditor.qml" line="342"/>
+        <location filename="../MetadataEditor.qml" line="340"/>
         <source>Detailinformation Dokument (Dokumente nach Anzahl Dateien)</source>
         <translation>Détail document (documents selon le nombre de fichiers)</translation>
     </message>
     <message>
-        <location filename="../MetadataEditor.qml" line="346"/>
+        <location filename="../MetadataEditor.qml" line="344"/>
         <source>Technische Angaben</source>
         <translation>Indications techniques</translation>
     </message>
     <message>
-        <location filename="../MetadataEditor.qml" line="355"/>
+        <location filename="../MetadataEditor.qml" line="353"/>
         <source>Verteilung der Schutzfristen</source>
         <translation>Répartition des délais de protection</translation>
     </message>
     <message>
-        <location filename="../MetadataEditor.qml" line="359"/>
+        <location filename="../MetadataEditor.qml" line="357"/>
         <source>Stufe</source>
         <translation>Niveau</translation>
     </message>
     <message>
-        <location filename="../MetadataEditor.qml" line="360"/>
+        <location filename="../MetadataEditor.qml" line="358"/>
         <source>Schutzfristenkategorie</source>
         <translation>Catégorie de délai de protection</translation>
     </message>
     <message>
-        <location filename="../MetadataEditor.qml" line="361"/>
+        <location filename="../MetadataEditor.qml" line="359"/>
         <source>Schutzfrist</source>
         <translation>Délai de protection</translation>
     </message>
     <message>
-        <location filename="../MetadataEditor.qml" line="362"/>
+        <location filename="../MetadataEditor.qml" line="360"/>
         <source>Anzahl</source>
         <translation>Nombre</translation>
     </message>
     <message>
-        <location filename="../MetadataEditor.qml" line="382"/>
+        <location filename="../MetadataEditor.qml" line="380"/>
         <source>Durchgeführte Prüfungen</source>
         <translation>Contrôles effectués</translation>
     </message>
     <message>
-        <location filename="../MetadataEditor.qml" line="405"/>
+        <location filename="../MetadataEditor.qml" line="403"/>
         <source>%1 Fehler / %2 Warnungen</source>
         <translation>%1 erreurs / %2 avertissements</translation>
     </message>
     <message>
-        <location filename="../MetadataEditor.qml" line="408"/>
+        <location filename="../MetadataEditor.qml" line="406"/>
         <source>Anzeigen</source>
         <translation>Afficher</translation>
     </message>
     <message>
-        <location filename="../MetadataEditor.qml" line="416"/>
+        <location filename="../MetadataEditor.qml" line="414"/>
         <source>* Wird nur bei «Paket vollständig validieren» geprüft.</source>
         <translation>* Vérifié uniquement lors de « Valider entièrement le paquet ».</translation>
     </message>
     <message>
-        <location filename="../MetadataEditor.qml" line="430"/>
+        <location filename="../MetadataEditor.qml" line="428"/>
         <source>Kein Paket geöffnet.
 Öffnen oder erstellen Sie ein Paket oder ziehen Sie den SIP-Ordner hierher.</source>
         <translation>Aucun paquet ouvert.
@@ -1332,27 +1174,27 @@ Ouvrez ou créez un paquet, ou glissez le répertoire SIP ici.</translation>
 <context>
     <name>NavigatorView</name>
     <message>
-        <location filename="../NavigatorView.qml" line="160"/>
+        <location filename="../NavigatorView.qml" line="130"/>
         <source>Doppelklick: Ansicht maximieren / wiederherstellen</source>
         <translation>Double-clic : agrandir / restaurer la vue</translation>
     </message>
     <message>
-        <location filename="../NavigatorView.qml" line="184"/>
+        <location filename="../NavigatorView.qml" line="154"/>
         <source>Alles aufklappen</source>
         <translation>Tout déplier</translation>
     </message>
     <message>
-        <location filename="../NavigatorView.qml" line="185"/>
+        <location filename="../NavigatorView.qml" line="155"/>
         <source>Alles aufklappen ist deaktiviert (Schwellwert überschritten)</source>
         <translation>Tout déplier est désactivé (seuil dépassé)</translation>
     </message>
     <message>
-        <location filename="../NavigatorView.qml" line="193"/>
+        <location filename="../NavigatorView.qml" line="163"/>
         <source>Alles zuklappen</source>
         <translation>Tout replier</translation>
     </message>
     <message>
-        <location filename="../NavigatorView.qml" line="287"/>
+        <location filename="../NavigatorView.qml" line="257"/>
         <source>Zu diesem Objekt ist eine Notiz erfasst</source>
         <translation>Une note est saisie pour cet objet</translation>
     </message>
@@ -1492,7 +1334,7 @@ Ouvrez ou créez un paquet, ou glissez le répertoire SIP ici.</translation>
     <message>
         <location filename="../NotesView.qml" line="60"/>
         <source>Objekt anzeigen</source>
-        <translation>Afficher l&apos;objet</translation>
+        <translation>Afficher l'objet</translation>
     </message>
     <message>
         <location filename="../NotesView.qml" line="67"/>
@@ -1582,7 +1424,7 @@ Ouvrez ou créez un paquet, ou glissez le répertoire SIP ici.</translation>
     <message>
         <location filename="../PreferencesDialog.qml" line="62"/>
         <source>Name des Report-Herstellers</source>
-        <translation>Nom de l&apos;auteur du rapport</translation>
+        <translation>Nom de l'auteur du rapport</translation>
     </message>
     <message>
         <location filename="../PreferencesDialog.qml" line="68"/>
@@ -1705,7 +1547,7 @@ Ouvrez ou créez un paquet, ou glissez le répertoire SIP ici.</translation>
     <message>
         <location filename="../SearchView.qml" line="136"/>
         <source>Die Suchkriterien werden mit UND kombiniert (gleicher Objekttyp).</source>
-        <translation>Les critères sont combinés avec ET (même type d&apos;objet).</translation>
+        <translation>Les critères sont combinés avec ET (même type d'objet).</translation>
     </message>
     <message>
         <location filename="../SearchView.qml" line="156"/>
@@ -1753,7 +1595,7 @@ Ouvrez ou créez un paquet, ou glissez le répertoire SIP ici.</translation>
     <message>
         <location filename="../ValidationView.qml" line="75"/>
         <source>Im Editor anzeigen</source>
-        <translation>Afficher dans l&apos;éditeur</translation>
+        <translation>Afficher dans l'éditeur</translation>
     </message>
     <message>
         <location filename="../ValidationView.qml" line="90"/>

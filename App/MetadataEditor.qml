@@ -215,9 +215,7 @@ Pane {
                     Layout.margins: 12
                     visible: editor.sections.length === 0
                              && ["ueberblick", "statistik", "validierung"].indexOf(editor.currentTab) < 0
-                    text: editor.currentTab === "archivischerVorgang"
-                          ? qsTr("Das Paket enthält keine archivischen Vorgänge.")
-                          : qsTr("Wählen Sie in einem Navigator ein Objekt aus, um dessen Metadaten anzuzeigen.")
+                    text: qsTr("Wählen Sie in einem Navigator ein Objekt aus, um dessen Metadaten anzuzeigen.")
                     color: palette.placeholderText
                 }
 
