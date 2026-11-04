@@ -120,6 +120,8 @@ class MetadataEditor(QObject):
             elements = [pkg.delivery, pkg.provenance, pkg.root]
         elif self._tab in ("statistik", "validierung"):
             return []
+        elif self._tab == "archivischerVorgang":
+            elements = pkg.children(pkg.root, self._tab)
         else:
             el = pkg.element(self._selected.get(self._tab, 0))
             elements = [el] if el is not None else []

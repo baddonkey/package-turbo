@@ -115,6 +115,23 @@ def test_structure_controller(opened):
     assert opened.messages
 
 
+def test_mass_assign_controller_preview_and_apply(opened):
+    pkg = opened.package
+    ctl = StructureController(opened)
+    top = next(folder for folder in pkg.children(pkg.table_of_contents, "ordner")
+               if pkg.text(folder, "name") == "content")
+    target = pkg.classification_system
+    before = len(list(pkg.iter_kind("ordnungssystemposition")))
+
+    preview = ctl.previewMassAssign([pkg.key(top)], pkg.key(target), 1, 1, False, True, [])
+    assert preview["created"] > 0 and preview["rows"]
+    assert len(list(pkg.iter_kind("ordnungssystemposition"))) == before
+
+    ctl.massAssignWithOverrides([pkg.key(top)], pkg.key(target), 1, 1, False, True, [])
+    assert len(list(pkg.iter_kind("ordnungssystemposition"))) > before
+    assert opened.dirty
+
+
 def test_file_controller_and_fixes(opened, sip_dir, tmp_path):
     pkg = opened.package
     ctl = FileController(opened)

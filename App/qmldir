@@ -1,4 +1,5 @@
 module App
+DockPanel 254.0 DockPanel.qml
 Main 254.0 Main.qml
 KindBadge 254.0 KindBadge.qml
 NavigatorView 254.0 NavigatorView.qml

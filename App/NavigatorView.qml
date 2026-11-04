@@ -7,12 +7,16 @@ Pane {
     id: root
 
     property string title: ""
+    property bool showTitleBar: true
     property var treeModel: null
     property var filters: []
     property string currentFilter: "all"
     property var columnRatios: [1.0]
     property Menu contextMenu: null
     property bool acceptsFileDrops: false
+    property bool acceptsFolderDrops: false
+    property bool draggableFolders: false
+    property var draggedFolderKeys: []
 
     readonly property int currentKey: treeView.selectionModel.currentIndex.valid
                                       ? treeModel.keyAt(treeView.selectionModel.currentIndex) : 0
@@ -25,6 +29,7 @@ Pane {
     signal filterRequested(string mode)
     signal titleDoubleClicked()
     signal filesDropped(int targetKey, var urls)
+    signal foldersDropped(var folderKeys, int targetKey)
     signal deleteRequested()
 
     padding: 0
@@ -50,6 +55,30 @@ Pane {
         if (kinds.length === 0 && currentKind)
             kinds.push(currentKind)
         return kinds
+    }
+
+    function selectedFolderKeys() {
+        const rows = treeView.selectionModel.selectedRows(0)
+        const keys = []
+        for (const index of rows) {
+            if (treeModel.kindAt(index) === "ordner") {
+                const key = treeModel.keyAt(index)
+                if (key && keys.indexOf(key) < 0)
+                    keys.push(key)
+            }
+        }
+        if (keys.length === 0 && currentKind === "ordner")
+            keys.push(currentKey)
+        return keys
+    }
+
+    function beginFolderDrag(row, key) {
+        const index = treeView.index(row, 0)
+        if (!treeView.selectionModel.isRowSelected(row, index.parent))
+            treeView.selectionModel.setCurrentIndex(index, ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows)
+        draggedFolderKeys = selectedFolderKeys()
+        if (draggedFolderKeys.length === 0)
+            draggedFolderKeys = [key]
     }
 
     function copySelection() {
@@ -113,6 +142,7 @@ Pane {
 
         ToolBar {
             Layout.fillWidth: true
+            visible: root.showTitleBar
 
             RowLayout {
                 anchors.fill: parent
@@ -256,6 +286,52 @@ Pane {
                         ToolTip.visible: noteHover.hovered
                         ToolTip.text: qsTr("Zu diesem Objekt ist eine Notiz erfasst")
                         HoverHandler { id: noteHover }
+                    }
+                }
+
+                DragHandler {
+                    id: folderDrag
+                    enabled: root.draggableFolders && cell.kind === "ordner"
+                    target: null
+                    onActiveChanged: {
+                        if (active)
+                            root.beginFolderDrag(cell.rowIndex, cell.elementKey)
+                        else
+                            root.draggedFolderKeys = []
+                    }
+                }
+
+                Drag.active: folderDrag.active && root.draggedFolderKeys.length > 0
+                Drag.source: cell
+                Drag.keys: ["package-folder"]
+                Drag.mimeData: ({ "application/x-package-folder-keys": root.draggedFolderKeys.join(",") })
+
+                property bool folderDropHover: false
+                DropArea {
+                    anchors.fill: parent
+                    z: 1
+                    enabled: root.acceptsFolderDrops && cell.columnIndex === 0
+                    keys: ["package-folder"]
+                    onEntered: cell.folderDropHover = true
+                    onExited: cell.folderDropHover = false
+                    onDropped: function (drop) {
+                        const folderKeys = drop.getDataAsString("application/x-package-folder-keys")
+                                                .split(",").map(Number)
+                                                .filter(key => Number.isInteger(key) && key > 0)
+                        if (folderKeys.length > 0) {
+                            const targetIndex = treeView.index(cell.rowIndex, 0)
+                            treeView.selectionModel.setCurrentIndex(
+                                targetIndex, ItemSelectionModel.ClearAndSelect | ItemSelectionModel.Rows
+                            )
+                            root.foldersDropped(folderKeys, cell.elementKey)
+                            drop.acceptProposedAction()
+                        }
+                    }
+                    Rectangle {
+                        anchors.fill: parent
+                        visible: cell.folderDropHover
+                        color: "transparent"
+                        border.color: palette.highlight
                     }
                 }
 
