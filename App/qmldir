@@ -1,0 +1,18 @@
+module App
+Main 254.0 Main.qml
+KindBadge 254.0 KindBadge.qml
+NavigatorView 254.0 NavigatorView.qml
+MetadataEditor 254.0 MetadataEditor.qml
+DataTable 254.0 DataTable.qml
+ValidationView 254.0 ValidationView.qml
+NotesView 254.0 NotesView.qml
+SampleView 254.0 SampleView.qml
+SearchView 254.0 SearchView.qml
+TimeSpanChart 254.0 TimeSpanChart.qml
+EditMenu 254.0 EditMenu.qml
+InputDialog 254.0 InputDialog.qml
+NewPackageDialog 254.0 NewPackageDialog.qml
+MassAssignDialog 254.0 MassAssignDialog.qml
+MassEditDialog 254.0 MassEditDialog.qml
+PreferencesDialog 254.0 PreferencesDialog.qml
+AdditionalDataEditor 254.0 AdditionalDataEditor.qml

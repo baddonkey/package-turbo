@@ -1,0 +1,97 @@
+from ph_backend import file_formats
+from ph_backend.sip import SipPackage
+from ph_backend.validation import CHECKS, ERROR, WARNING, Validator, summarize
+
+
+def _checks(issues):
+    return {i["checkId"] for i in issues}
+
+
+def test_continuous_checks_on_synthetic_sip(sip_dir):
+    issues = Validator(SipPackage.open_folder(sip_dir)).run(full=False)
+    found = _checks(issues)
+    assert {"empty_folders", "unassigned_files", "empty_dossiers", "dossier_title", "open_time_span"} <= found
+    assert not any(c.full_only for c in CHECKS if c.id in found)
+
+
+def test_full_validation_detects_file_system_mismatch(sip_dir):
+    (sip_dir / "content" / "d0001" / "p000001.pdf").write_bytes(b"changed")
+    (sip_dir / "content" / "d0001" / "surplus.pdf").write_bytes(b"x")
+    (sip_dir / "content" / "d0001" / "p000002.txt").unlink()
+    (sip_dir / "stray.txt").write_text("x")
+    issues = Validator(SipPackage.open_folder(sip_dir)).run(full=True)
+    found = _checks(issues)
+    assert {"checksum", "surplus_file", "missing_file", "illegal_entries", "header_content",
+            "validity_failed"} <= found
+
+
+def test_sip_name_check_can_be_disabled(sip_dir):
+    renamed = sip_dir.rename(sip_dir.with_name("not_a_sip_name"))
+    pkg = SipPackage.open_folder(renamed)
+    assert "sip_name" in _checks(Validator(pkg).run(full=True))
+    assert "sip_name" not in _checks(Validator(pkg, validate_sip_name=False).run(full=True))
+
+
+def test_time_span_checks(sip_dir):
+    pkg = SipPackage.open_folder(sip_dir)
+    dossier = next(pkg.iter_kind("dossier"))
+    pkg.set_time_span(dossier, "entstehungszeitraum", "2009", "2001")
+    issues = Validator(pkg).run(full=False)
+    assert "invalid_time_span" in _checks(issues)
+    pkg.set_time_span(dossier, "entstehungszeitraum", "2001", "2003")
+    assert "time_span_hierarchy" in _checks(Validator(pkg).run(full=False))
+
+
+def test_protection_period_inconsistency(sip_dir):
+    pkg = SipPackage.open_folder(sip_dir)
+    dossier = next(pkg.iter_kind("dossier"))
+    pkg.set_text(dossier, "schutzfristenkategorie", "BGA")
+    issues = Validator(pkg).run(full=False)
+    assert any(i["checkId"] == "protection_period" and i["key"] == pkg.key(dossier) for i in issues)
+    pkg.set_text(dossier, "schutzfrist", "50")
+    assert any(i["checkId"] == "protection_period" and "einheitlich" in i["description"]
+               for i in Validator(pkg).run(full=False))
+
+
+def test_duplicate_position_numbers(sip_dir):
+    pkg = SipPackage.open_folder(sip_dir)
+    position = next(pkg.iter_kind("ordnungssystemposition"))
+    from copy import deepcopy
+    clone = deepcopy(position)
+    clone.set("id", "_osp2")
+    for el in clone.iter():
+        if el.get("id") and el is not clone:
+            el.set("id", el.get("id") + "_copy")
+    position.addnext(clone)
+    assert "position_number" in _checks(Validator(pkg).run(full=False))
+
+
+def test_summarize_counts_every_check(sip_dir):
+    issues = Validator(SipPackage.open_folder(sip_dir)).run(full=True)
+    summary = summarize(issues)
+    assert len(summary) == len(CHECKS)
+    assert sum(s["errors"] + s["warnings"] for s in summary) == len(issues)
+
+
+def test_kad_classification():
+    assert file_formats.classify("a.PDF").rating == file_formats.RECOMMENDED
+    assert file_formats.classify("a.docx").rating == file_formats.ACCEPTED
+    assert file_formats.classify("a.odt").rating == file_formats.NOT_ACCEPTED
+    assert file_formats.classify("a.xyz").rating == file_formats.UNKNOWN
+    assert file_formats.classify("noext").rating == file_formats.UNKNOWN
+
+
+def test_file_format_check_follows_kad(sip_dir):
+    pkg = SipPackage.open_folder(sip_dir)
+    assert "file_format" not in _checks(Validator(pkg).run(full=True))
+    pkg.child(pkg.file_by_id("_file1"), "name").text = "p000001.odt"
+    pkg.child(pkg.file_by_id("_file2"), "name").text = "p000002.xyz"
+    pkg.invalidate_file_index()
+    severities = {i["value"]: i["severity"] for i in Validator(pkg).run(full=True) if i["checkId"] == "file_format"}
+    assert severities == {"p000001.odt": ERROR, "p000002.xyz": WARNING}
+
+
+def test_kost_sample_is_schema_valid(sample_sip):
+    issues = Validator(SipPackage.open_folder(sample_sip)).run(full=True)
+    found = _checks(issues)
+    assert not found & {"schema", "checksum", "missing_file", "surplus_file", "illegal_entries"}

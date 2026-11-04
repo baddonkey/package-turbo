@@ -1,0 +1,494 @@
+"""Validation rules of the Package Handler (chapter 10 of the user documentation)."""
+
+import re
+from collections import defaultdict
+from dataclasses import dataclass
+from pathlib import Path, PurePosixPath
+
+from lxml import etree
+
+from . import file_formats, files, schema, timespan
+from .sip import SipPackage, file_checksum, localname
+
+ERROR = "error"
+WARNING = "warning"
+
+MAX_PATH_LENGTH = 180
+MAX_PACKAGE_SIZE = 8 * 1024 ** 3
+_SIP_NAME = re.compile(r"^SIP_\d{8}_.+")
+
+
+@dataclass(frozen=True)
+class Check:
+    id: str
+    name: str
+    group: str
+    full_only: bool
+
+
+_STRUCTURE = "Ablieferungsstruktur"
+_CLASSIFICATION = "Ordnungssystem"
+_FILE_SYSTEM = "Metadaten und Dateisystem"
+_PLAUSIBILITY = "Vollständigkeit und Plausibilität"
+
+CHECKS = [
+    Check("file_format", "Dateiformat", _STRUCTURE, True),
+    Check("package_size", "Paketgrösse", _STRUCTURE, True),
+    Check("path_length", "Pfadlänge", _STRUCTURE, False),
+    Check("checksum", "Prüfsumme", _STRUCTURE, True),
+    Check("sip_name", "SIP-Name", _STRUCTURE, True),
+    Check("invalid_value", "Ungültige Angabe", _STRUCTURE, False),
+    Check("illegal_entries", "Unzulässige Datei", _STRUCTURE, True),
+    Check("header_content", "SIP", _STRUCTURE, True),
+    Check("empty_folders", "Leere Ordner", _STRUCTURE, False),
+    Check("charset", "Zeichensatz", _STRUCTURE, False),
+    Check("dossier_title", "Dossier Titel", _CLASSIFICATION, False),
+    Check("position_number", "Ordnungssystemposition Nummer", _CLASSIFICATION, False),
+    Check("positions_and_dossiers", "Ordnungssystempositionen und Dossiers", _CLASSIFICATION, True),
+    Check("wrong_file", "Falsche Datei", _FILE_SYSTEM, True),
+    Check("wrong_folder", "Falscher Ordner", _FILE_SYSTEM, True),
+    Check("missing_file", "Fehlende Datei", _FILE_SYSTEM, True),
+    Check("missing_folder", "Fehlender Ordner", _FILE_SYSTEM, True),
+    Check("surplus_file", "Überzählige Datei", _FILE_SYSTEM, True),
+    Check("surplus_folder", "Überzähliger Ordner", _FILE_SYSTEM, True),
+    Check("document_without_files", "Dokument ohne Dateien", _PLAUSIBILITY, False),
+    Check("invalid_time_span", "Falsche Zeitraum Angaben", _PLAUSIBILITY, False),
+    Check("missing_values", "Fehlende Angaben", _PLAUSIBILITY, False),
+    Check("identical_files", "Identische Dateien", _PLAUSIBILITY, True),
+    Check("unassigned_files", "Keine Zuweisung", _PLAUSIBILITY, False),
+    Check("empty_dossiers", "Leere Dossiers", _PLAUSIBILITY, False),
+    Check("protection_period", "Schutzfrist", _PLAUSIBILITY, False),
+    Check("time_span_hierarchy", "Zeitraum", _PLAUSIBILITY, False),
+    Check("open_time_span", "Offener Zeitraum", _PLAUSIBILITY, False),
+    Check("schema", "Allgemein", _PLAUSIBILITY, False),
+    Check("validity_failed", "Gültigkeitsprüfung fehlgeschlagen", _PLAUSIBILITY, True),
+]
+CHECK_NAMES = [c.name for c in CHECKS]
+_NAME_OF = {c.id: c.name for c in CHECKS}
+
+
+class Validator:
+    def __init__(self, pkg: SipPackage, validate_sip_name: bool = True):
+        self.pkg = pkg
+        self.validate_sip_name = validate_sip_name
+        self.issues: list[dict] = []
+        self._schema_cache: dict[Path, etree.XMLSchema] = {}
+
+    # ---------------------------------------------------------------- api
+
+    def run(self, full: bool, progress=None, cancelled=None) -> list[dict]:
+        """Runs all continuous checks and, if full, also the expensive ones."""
+        self.issues = []
+        steps = [c for c in CHECKS if full or not c.full_only]
+        for i, check in enumerate(steps):
+            if cancelled and cancelled():
+                break
+            getattr(self, "_check_" + check.id)()
+            if progress:
+                progress(int((i + 1) / len(steps) * 100))
+        return self.issues
+
+    def _add(self, check_id: str, el, description: str, field: str = "", value: str = "", severity: str = ERROR,
+             object_kind: str | None = None, object_name: str | None = None, path: str = "") -> None:
+        pkg = self.pkg
+        kind = object_kind if object_kind is not None else (pkg.kind(el) if el is not None else "paket")
+        self.issues.append({
+            "severity": severity,
+            "severityLabel": "Fehler" if severity == ERROR else "Warnung",
+            "checkId": check_id,
+            "check": _NAME_OF[check_id],
+            "object": schema.KIND_LABELS.get(kind, kind),
+            "objectName": object_name if object_name is not None else (pkg.display_name(el) if el is not None else pkg.name),
+            "description": description,
+            "field": schema.label_for(field) if field else "",
+            "fieldTag": field,
+            "value": value,
+            "key": pkg.key(el) if el is not None else 0,
+            "path": path,
+        })
+
+    # ---------------------------------------------------------------- helpers
+
+    def _toc_entries(self):
+        return list(self.pkg.walk_table_of_contents())
+
+    def _content_files(self):
+        return [(el, p) for el, p in self._toc_entries() if localname(el) == "datei" and p.parts[:1] == ("content",)]
+
+    def _fs_entries(self) -> dict[PurePosixPath, Path]:
+        root = self.pkg.root_dir
+        result = {}
+        for top in ("header", "content"):
+            base = root / top
+            if base.is_dir():
+                result[PurePosixPath(top)] = base
+                for path in base.rglob("*"):
+                    result[PurePosixPath(path.relative_to(root).as_posix())] = path
+        return result
+
+    def _is_metadata_file(self, rel: PurePosixPath) -> bool:
+        return rel == PurePosixPath("header/metadata.xml")
+
+    def _has_files(self, el) -> bool:
+        pkg = self.pkg
+        if pkg.children(el, "dateiRef"):
+            return True
+        return any(self._has_files(c) for c in pkg.children(el) if localname(c) in ("dossier", "dokument", "mappe"))
+
+    # ---------------------------------------------------------------- structure
+
+    def _check_file_format(self):
+        """Rates content files with the KOST-CECO KaD; recommended and accepted formats pass."""
+        for el, rel in self._content_files():
+            fmt = file_formats.classify(rel.name)
+            if fmt.rating == file_formats.NOT_ACCEPTED:
+                self._add("file_format", el,
+                          f"Das Format {fmt.name} ist gemäss KOST-Katalog archivischer Dateiformate (KaD) "
+                          "nicht archivtauglich und muss konvertiert werden.", "name", rel.name)
+            elif fmt.rating == file_formats.UNKNOWN:
+                self._add("file_format", el,
+                          f"Das Format {fmt.name} ist im KOST-Katalog archivischer Dateiformate (KaD) nicht erfasst.",
+                          "name", rel.name, WARNING)
+
+    def _check_package_size(self):
+        if not self.pkg.root_dir:
+            return
+        total = sum(p.stat().st_size for p in self.pkg.root_dir.rglob("*") if p.is_file())
+        if total > MAX_PACKAGE_SIZE:
+            self._add("package_size", None, f"Das Paket ist {total / 1024 ** 3:.2f} GB gross (maximal 8 GB).",
+                      value=str(total))
+
+    def _check_path_length(self):
+        top = self.pkg.root_dir.name if self.pkg.root_dir else ""
+        for el, rel in self._toc_entries():
+            full = f"{top}/{rel.as_posix()}" if top else rel.as_posix()
+            if len(full) >= MAX_PATH_LENGTH:
+                self._add("path_length", el, f"Der Pfad ist {len(full)} Zeichen lang (weniger als 180 erlaubt).",
+                          "name", full)
+
+    def _check_checksum(self):
+        pkg = self.pkg
+        if not pkg.root_dir:
+            return
+        for el, rel in self._toc_entries():
+            if localname(el) != "datei" or self._is_metadata_file(rel):
+                continue
+            expected = pkg.text(el, "pruefsumme")
+            algorithm = pkg.text(el, "pruefalgorithmus") or "MD5"
+            path = pkg.fs_path(el)
+            if not expected:
+                self._add("checksum", el, "Für die Datei ist keine Prüfsumme erfasst.", "pruefsumme")
+                continue
+            if path is None or not path.is_file():
+                continue
+            actual = file_checksum(path, algorithm)
+            if actual.lower() != expected.lower():
+                self._add("checksum", el, f"Die Prüfsumme ({algorithm}) stimmt nicht mit dem Dateiinhalt überein.",
+                          "pruefsumme", expected)
+
+    def _check_sip_name(self):
+        if not self.validate_sip_name or not self.pkg.root_dir:
+            return
+        name = self.pkg.root_dir.name
+        if not _SIP_NAME.match(name):
+            self._add("sip_name", None,
+                      "Der Name des Pakets entspricht nicht dem Muster SIP_[Ablieferungsdatum]_[Abliefernde Stelle]_Referenz.",
+                      value=name)
+
+    def _check_invalid_value(self):
+        """Simple type checks that the XSD would also catch, reported per field."""
+        pkg = self.pkg
+        for el in pkg.iter_kind("dossier", "dokument", "ablieferung", "ordnungssystemposition"):
+            period = pkg.text(el, "schutzfrist")
+            if period and not period.isdigit():
+                self._add("invalid_value", el, "Die Schutzfrist muss eine Anzahl Jahre (Ganzzahl) sein.",
+                          "schutzfrist", period)
+
+    def _check_illegal_entries(self):
+        root = self.pkg.root_dir
+        if not root:
+            return
+        for path in root.iterdir():
+            if path.name not in ("header", "content") or not path.is_dir():
+                self._add("illegal_entries", None,
+                          "Im Toplevel-Ordner des Pakets sind nur die Ordner header und content erlaubt.",
+                          value=path.name, object_kind="datei" if path.is_file() else "ordner", object_name=path.name,
+                          path=path.name)
+
+    def _check_header_content(self):
+        root = self.pkg.root_dir
+        if not root:
+            return
+        header = root / "header"
+        if not (root / "content").is_dir():
+            self._add("header_content", None, "Der Ordner content fehlt.", value="content")
+        if not (header / "xsd").is_dir() or not any((header / "xsd").glob("*.xsd")):
+            self._add("header_content", None, "Der Ordner header/xsd mit den XSD-Dateien fehlt.", value="header/xsd",
+                      path="header/xsd")
+        for path in header.iterdir():
+            if path.name not in ("metadata.xml", "xsd"):
+                self._add("header_content", None, "Im Ordner header sind nur metadata.xml und der Ordner xsd erlaubt.",
+                          value=path.name, object_kind="datei" if path.is_file() else "ordner", object_name=path.name,
+                          path=f"header/{path.name}")
+
+    def _check_empty_folders(self):
+        pkg = self.pkg
+
+        def has_files(folder) -> bool:
+            return bool(pkg.children(folder, "datei")) or any(has_files(o) for o in pkg.children(folder, "ordner"))
+
+        for el, rel in self._toc_entries():
+            if localname(el) == "ordner" and len(rel.parts) > 1 and not has_files(el):
+                self._add("empty_folders", el, "Der Ordner enthält keine Dateien.", "name", rel.as_posix(), WARNING)
+
+    def _check_charset(self):
+        for el, rel in self._toc_entries():
+            if not files.is_valid_name(rel.name):
+                self._add("charset", el, "Der Name enthält unzulässige Zeichen (erlaubt: A-Z a-z 0-9 _ . -).",
+                          "name", rel.name)
+
+    # ---------------------------------------------------------------- classification system
+
+    def _check_dossier_title(self):
+        pkg = self.pkg
+        for el in pkg.iter_kind("dossier"):
+            title = pkg.text(el, "titel")
+            if title and len(title) < 5:
+                self._add("dossier_title", el, "Der Titel des Dossiers ist kürzer als 5 Zeichen und vermutlich nicht sprechend.",
+                          "titel", title, WARNING)
+
+    def _check_position_number(self):
+        pkg = self.pkg
+        parents = [pkg.classification_system] + list(pkg.iter_kind("ordnungssystemposition"))
+        for parent in parents:
+            seen = defaultdict(list)
+            for position in pkg.children(parent, "ordnungssystemposition"):
+                number = pkg.text(position, "nummer")
+                if number:
+                    seen[number].append(position)
+            for number, positions in seen.items():
+                if len(positions) > 1:
+                    for position in positions:
+                        self._add("position_number", position,
+                                  "Die Nummer der Ordnungssystemposition ist nicht eindeutig.", "nummer", number)
+
+    def _check_positions_and_dossiers(self):
+        pkg = self.pkg
+        for position in pkg.iter_kind("ordnungssystemposition"):
+            if pkg.children(position, "ordnungssystemposition") and pkg.children(position, "dossier"):
+                self._add("positions_and_dossiers", position,
+                          "Dossiers dürfen nur auf der untersten Stufe des Ordnungssystems (Rubriken) eröffnet werden.")
+
+    # ---------------------------------------------------------------- metadata vs. file system
+
+    def _compare_file_system(self):
+        if not self.pkg.root_dir:
+            return None
+        fs = self._fs_entries()
+        toc = {rel: el for el, rel in self._toc_entries()}
+        return fs, toc
+
+    def _check_wrong_file(self):
+        cmp = self._compare_file_system()
+        if cmp:
+            fs, toc = cmp
+            for rel, el in toc.items():
+                if localname(el) == "datei" and rel in fs and fs[rel].is_dir():
+                    self._add("wrong_file", el, "Im Dateisystem existiert an dieser Stelle ein Ordner.", "name", rel.as_posix())
+
+    def _check_wrong_folder(self):
+        cmp = self._compare_file_system()
+        if cmp:
+            fs, toc = cmp
+            for rel, el in toc.items():
+                if localname(el) == "ordner" and rel in fs and fs[rel].is_file():
+                    self._add("wrong_folder", el, "Im Dateisystem existiert an dieser Stelle eine Datei.", "name", rel.as_posix())
+
+    def _check_missing_file(self):
+        cmp = self._compare_file_system()
+        if cmp:
+            fs, toc = cmp
+            for rel, el in toc.items():
+                if localname(el) == "datei" and rel not in fs:
+                    self._add("missing_file", el, "Die Datei existiert im Dateisystem nicht.", "name", rel.as_posix())
+
+    def _check_missing_folder(self):
+        cmp = self._compare_file_system()
+        if cmp:
+            fs, toc = cmp
+            for rel, el in toc.items():
+                if localname(el) == "ordner" and rel not in fs:
+                    self._add("missing_folder", el, "Der Ordner existiert im Dateisystem nicht.", "name", rel.as_posix())
+
+    def _check_surplus_file(self):
+        cmp = self._compare_file_system()
+        if cmp:
+            fs, toc = cmp
+            for rel, path in fs.items():
+                if path.is_file() and rel not in toc and not self._is_metadata_file(rel):
+                    self._add("surplus_file", None, "Die Datei ist in den Metadaten nicht aufgeführt.",
+                              value=rel.as_posix(), object_kind="datei", object_name=rel.name, path=rel.as_posix())
+
+    def _check_surplus_folder(self):
+        cmp = self._compare_file_system()
+        if cmp:
+            fs, toc = cmp
+            for rel, path in fs.items():
+                if path.is_dir() and rel not in toc:
+                    self._add("surplus_folder", None, "Der Ordner ist in den Metadaten nicht aufgeführt.",
+                              value=rel.as_posix(), object_kind="ordner", object_name=rel.name, path=rel.as_posix())
+
+    # ---------------------------------------------------------------- completeness and plausibility
+
+    def _check_document_without_files(self):
+        pkg = self.pkg
+        for el in pkg.iter_kind("dokument"):
+            if pkg.text(el, "erscheinungsform").lower() == "digital" and not pkg.children(el, "dateiRef"):
+                self._add("document_without_files", el, "Das digitale Dokument enthält keine Dateien.", severity=WARNING)
+
+    def _spans(self):
+        pkg = self.pkg
+        for el in pkg.iter_kind("ablieferung", "dossier", "dokument"):
+            start, end = pkg.time_span(el, "entstehungszeitraum")
+            if start or end:
+                yield el, start, end
+
+    def _check_invalid_time_span(self):
+        for el, start, end in self._spans():
+            lower, upper = timespan.parse_lower(start), timespan.parse_upper(end)
+            if lower and upper and upper < lower:
+                self._add("invalid_time_span", el, "Das Enddatum liegt vor dem Anfangsdatum.",
+                          "entstehungszeitraum", timespan.format_span(start, end))
+
+    def _check_missing_values(self):
+        pkg = self.pkg
+        files_delivery = pkg.delivery_type.upper() == "FILES"
+        delivery = pkg.delivery
+        for tag in ("ablieferungstyp", "ablieferndeStelle", "ablieferungsnummer", "schutzfristenkategorie", "schutzfrist"):
+            if not pkg.text(delivery, tag):
+                self._add("missing_values", delivery, "Das Metadatum ist nicht ausgefüllt.", tag)
+        if pkg.provenance is not None and not pkg.text(pkg.provenance, "aktenbildnerName"):
+            self._add("missing_values", pkg.provenance, "Das Metadatum ist nicht ausgefüllt.", "aktenbildnerName")
+        system = pkg.classification_system
+        if system is not None and not pkg.text(system, "name"):
+            self._add("missing_values", system, "Das Metadatum ist nicht ausgefüllt.", "name",
+                      severity=WARNING if files_delivery else ERROR)
+        for position in pkg.iter_kind("ordnungssystemposition"):
+            for tag in ("nummer", "titel"):
+                if not pkg.text(position, tag):
+                    self._add("missing_values", position, "Das Metadatum ist nicht ausgefüllt.", tag,
+                              severity=WARNING if files_delivery else ERROR)
+        for el in pkg.iter_kind("dossier", "dokument"):
+            if not pkg.text(el, "titel"):
+                self._add("missing_values", el, "Das Metadatum ist nicht ausgefüllt.", "titel")
+
+    def _check_identical_files(self):
+        pkg = self.pkg
+        by_checksum = defaultdict(list)
+        for el, _ in self._content_files():
+            checksum = pkg.text(el, "pruefsumme").lower()
+            if checksum:
+                by_checksum[checksum].append(el)
+        for checksum, files in by_checksum.items():
+            if len(files) > 1:
+                for el in files:
+                    self._add("identical_files", el, f"Die Datei ist {len(files)}-mal im Paket vorhanden.",
+                              "pruefsumme", checksum, WARNING)
+
+    def _check_unassigned_files(self):
+        referenced = self.pkg.referenced_ids()
+        for el, rel in self._content_files():
+            if el.get("id", "") not in referenced:
+                self._add("unassigned_files", el, "Die Datei ist weder einem Dossier noch einem Dokument zugewiesen.",
+                          "name", rel.as_posix())
+
+    def _check_empty_dossiers(self):
+        for el in self.pkg.iter_kind("dossier"):
+            if not self._has_files(el):
+                self._add("empty_dossiers", el, "Das Dossier enthält keine Dateien.", severity=WARNING)
+
+    def _check_protection_period(self):
+        pkg = self.pkg
+        delivery = pkg.delivery
+        category, period = pkg.text(delivery, "schutzfristenkategorie"), pkg.text(delivery, "schutzfrist")
+        if bool(category) != bool(period):
+            missing = "schutzfrist" if category else "schutzfristenkategorie"
+            self._add("protection_period", delivery, "Schutzfristenkategorie und Schutzfrist müssen beide ausgefüllt sein.", missing)
+        pairs = {(category, period)} if category and period else set()
+        for el in pkg.iter_kind("dossier"):
+            c, p = pkg.text(el, "schutzfristenkategorie"), pkg.text(el, "schutzfrist")
+            if bool(c) != bool(p):
+                missing = "schutzfrist" if c else "schutzfristenkategorie"
+                self._add("protection_period", el, "Schutzfristenkategorie und Schutzfrist müssen beide ausgefüllt sein.", missing)
+            elif c:
+                pairs.add((c, p))
+        if len(pairs) > 1:
+            listing = ", ".join(f"{c}/{p}" for c, p in sorted(pairs))
+            self._add("protection_period", delivery, "Die Schutzfristen sind im Paket nicht einheitlich ausgefüllt.",
+                      "schutzfrist", listing)
+
+    def _check_time_span_hierarchy(self):
+        pkg = self.pkg
+        for el in pkg.iter_kind("dossier", "dokument"):
+            parent = el.getparent()
+            parent_name = localname(parent)
+            if parent_name == "ordnungssystemposition":
+                parent = pkg.delivery
+            elif parent_name != "dossier":
+                continue
+            start, end = pkg.time_span(el, "entstehungszeitraum")
+            p_start, p_end = pkg.time_span(parent, "entstehungszeitraum")
+            lower, upper = timespan.parse_lower(start), timespan.parse_upper(end)
+            p_lower, p_upper = timespan.parse_lower(p_start), timespan.parse_upper(p_end)
+            if (lower and p_lower and lower < p_lower) or (upper and p_upper and upper > p_upper):
+                self._add("time_span_hierarchy", el,
+                          f"Der Zeitraum liegt ausserhalb des übergeordneten Zeitraums ({timespan.format_span(p_start, p_end)}).",
+                          "entstehungszeitraum", timespan.format_span(start, end), WARNING)
+
+    def _check_open_time_span(self):
+        pkg = self.pkg
+        for el in pkg.iter_kind("dossier"):
+            start, end = pkg.time_span(el, "entstehungszeitraum")
+            if timespan.is_open(end):
+                self._add("open_time_span", el, "Der Zeitraum des Dossiers ist offen («keine Angabe»).",
+                          "entstehungszeitraum", timespan.format_span(start, end), WARNING)
+
+    def _check_schema(self):
+        xsd = self.pkg.xsd_path()
+        if xsd is None:
+            return
+        try:
+            xml_schema = self._schema_cache.get(xsd)
+            if xml_schema is None:
+                parser = etree.XMLParser(resolve_entities=False, no_network=True)
+                xml_schema = etree.XMLSchema(etree.parse(str(xsd), parser))
+                self._schema_cache[xsd] = xml_schema
+        except (etree.XMLSchemaParseError, etree.XMLSyntaxError, OSError) as exc:
+            self._add("schema", None, f"Das XML-Schema konnte nicht geladen werden: {exc}", value=xsd.name, severity=WARNING)
+            return
+        if xml_schema.validate(self.pkg.tree):
+            return
+        prefix = ("Das Paket entspricht nicht den Anforderungen für die Ablieferung ans Archiv. Die metadata.xml-Datei "
+                  "konnte nicht erfolgreich gegenüber dem XML-Schema validiert werden")
+        for error in list(xml_schema.error_log)[:200]:
+            self._add("schema", None, f"{prefix} (Zeile {error.line}): {error.message}", value=str(error.line))
+
+    def _check_validity_failed(self):
+        self.add_validity_summary()
+
+    def add_validity_summary(self) -> None:
+        if any(i["severity"] == ERROR for i in self.issues):
+            self._add("validity_failed", None,
+                      "Das Paket enthält noch Fehler. Beheben Sie alle Fehler und validieren Sie das Paket erneut.")
+
+
+def summarize(issues: list[dict]) -> list[dict]:
+    """Per-check error/warning counts for the editor tab 'Validierung'."""
+    counts = {c.id: [0, 0] for c in CHECKS}
+    for issue in issues:
+        counts[issue["checkId"]][0 if issue["severity"] == ERROR else 1] += 1
+    return [
+        {"group": c.group, "checkId": c.id, "check": c.name, "errors": counts[c.id][0],
+         "warnings": counts[c.id][1], "fullOnly": c.full_only}
+        for c in CHECKS
+    ]

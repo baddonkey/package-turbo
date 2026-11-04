@@ -1,0 +1,74 @@
+import sys
+from pathlib import Path
+
+from PySide6.QtCore import QLocale, QSettings, QTranslator
+from PySide6.QtGui import QGuiApplication, QIcon
+from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtQuickControls2 import QQuickStyle
+
+from ph_backend.backend import Backend
+from ph_backend.controllers import (FileController, NoteController, PackageController, SearchController,
+                                    StructureController)
+
+BASE_DIR = Path(__file__).resolve().parent
+APP_NAME = "Package Turbo"
+APP_VERSION = "0.1.0"
+
+
+def _manual_paths() -> list[Path]:
+    return sorted(BASE_DIR.glob("*Benutzerdokumentation*.pdf")) + sorted((BASE_DIR / "docs").glob("*.pdf")) \
+        + [BASE_DIR / "docs" / "package_handler.md"]
+
+
+def main() -> int:
+    QQuickStyle.setStyle("Fusion")
+
+    app = QGuiApplication(sys.argv)
+    app.setApplicationName(APP_NAME)
+    app.setApplicationVersion(APP_VERSION)
+    app.setOrganizationName("package-turbo")
+    app.setWindowIcon(QIcon(str(BASE_DIR / "App" / "icons" / "app.svg")))
+
+    settings = QSettings()
+    backend = Backend(settings)
+
+    translator = QTranslator(app)
+    if backend.language == "fr" and translator.load(str(BASE_DIR / "App" / "i18n" / "package_turbo_fr.qm")):
+        app.installTranslator(translator)
+        QLocale.setDefault(QLocale(QLocale.Language.French, QLocale.Country.Switzerland))
+
+    controllers = {
+        "structure": StructureController(backend),
+        "fileOps": FileController(backend),
+        "notesCtl": NoteController(backend),
+        "searchCtl": SearchController(backend),
+        "packageCtl": PackageController(backend, _manual_paths()),
+    }
+
+    engine = QQmlApplicationEngine()
+    engine.addImportPath(str(BASE_DIR))
+    context = engine.rootContext()
+    context.setContextProperty("backend", backend)
+    context.setContextProperty("editor", backend.editor)
+    for name in ("classificationModel", "dossierModel", "packageModel", "validationTable", "changesTable",
+                 "searchTable", "notesTable", "sampleTable"):
+        context.setContextProperty(name, getattr(backend, name))
+    for name, controller in controllers.items():
+        context.setContextProperty(name, controller)
+    context.setContextProperty("appVersion", APP_VERSION)
+
+    engine.loadFromModule("App", "Main")
+    if not engine.rootObjects():
+        return -1
+
+    if len(sys.argv) > 1 and Path(sys.argv[1]).is_dir():
+        backend.openRecent(sys.argv[1])
+
+    ret = app.exec()
+    backend.shutdown()
+    del engine
+    return ret
+
+
+if __name__ == "__main__":
+    sys.exit(main())
