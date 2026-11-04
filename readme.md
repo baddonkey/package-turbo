@@ -1,5 +1,9 @@
 # package-turbo
 
+<p align="center">
+  <img src="docs/user-guide/img/02-ueberblick.png" alt="Package Turbo showing an open SIP package" width="100%">
+</p>
+
 An experimental reimplementation of the Swiss Federal Archives' Package Handler
 for eCH-0160 Submission Information Packages (SIPs). This project is for
 educational purposes and is not intended for production use.
