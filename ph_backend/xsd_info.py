@@ -8,6 +8,23 @@ from lxml import etree
 
 XS = "{http://www.w3.org/2001/XMLSchema}"
 BUNDLED_XSD_DIR = Path(__file__).resolve().parent / "resources" / "xsd"
+SCHEMA_RELEASES = {
+    "1.3": ("5.1", BUNDLED_XSD_DIR / "1.3"),
+    "1.2": ("5.0", BUNDLED_XSD_DIR),
+    "1.1": ("4.1", BUNDLED_XSD_DIR / "1.1"),
+    "1.0": ("4.0", BUNDLED_XSD_DIR / "1.0"),
+}
+LATEST_RELEASE = "1.3"
+
+
+def schema_release(version: str) -> tuple[str, Path]:
+    if version not in SCHEMA_RELEASES:
+        raise ValueError(f"Unsupported creation version: eCH-0160 {version}")
+    return SCHEMA_RELEASES[version]
+
+
+def schema_directory(schema_version: str) -> Path | None:
+    return next((directory for version, directory in SCHEMA_RELEASES.values() if version == schema_version), None)
 
 
 @dataclass
@@ -22,6 +39,14 @@ class ElementInfo:
     name: str
     type: str
     min_occurs: int
+    max_occurs: int | None = 1
+
+
+@dataclass(frozen=True)
+class AttributeInfo:
+    name: str
+    type: str
+    required: bool
 
 
 def _strip_prefix(name: str | None) -> str:
@@ -29,11 +54,11 @@ def _strip_prefix(name: str | None) -> str:
 
 
 class SchemaInfo:
-    def __init__(self, xsd_dir: Path):
+    def __init__(self, xsd_dir: Path | None):
         self._simple: dict[str, etree._Element] = {}
         self._complex: dict[str, etree._Element] = {}
         parser = etree.XMLParser(resolve_entities=False, no_network=True)
-        for path in sorted(Path(xsd_dir).glob("*.xsd")):
+        for path in sorted(Path(xsd_dir).glob("*.xsd")) if xsd_dir is not None else []:
             root = etree.parse(str(path), parser).getroot()
             for st in root.iter(XS + "simpleType"):
                 if st.get("name"):
@@ -44,6 +69,24 @@ class SchemaInfo:
 
     def has_type(self, name: str) -> bool:
         return name in self._complex
+
+    def is_simple(self, name: str) -> bool:
+        return name in self._simple or name in ("string", "token", "integer", "boolean", "date", "dateTime")
+
+    def attributes(self, type_name: str) -> list[AttributeInfo]:
+        definition = self._complex.get(type_name)
+        if definition is None:
+            return []
+        extension = definition.find(f"{XS}complexContent/{XS}extension")
+        if extension is None:
+            extension = definition.find(f"{XS}simpleContent/{XS}extension")
+        result = self.attributes(_strip_prefix(extension.get("base"))) if extension is not None else []
+        container = extension if extension is not None else definition
+        for attribute in container.findall(XS + "attribute"):
+            if attribute.get("name") and attribute.get("use") != "prohibited":
+                result.append(AttributeInfo(attribute.get("name"), _strip_prefix(attribute.get("type")),
+                                            attribute.get("use") == "required"))
+        return result
 
     def elements(self, type_name: str) -> list[ElementInfo]:
         """Child elements of a complex type in sequence order, including those of extended base types."""
@@ -57,9 +100,20 @@ class SchemaInfo:
             container = ext
         else:
             container = ct
-        for el in container.iter(XS + "element"):
-            if el.get("name"):
-                result.append(ElementInfo(el.get("name"), _strip_prefix(el.get("type")), int(el.get("minOccurs", "1"))))
+        def collect(particle, minimum: int = 1, maximum: int | None = 1):
+            for child in particle:
+                if child.tag not in (XS + "element", XS + "sequence", XS + "choice", XS + "all"):
+                    continue
+                child_minimum = minimum * int(child.get("minOccurs", "1"))
+                occurrence = child.get("maxOccurs", "1")
+                child_maximum = None if maximum is None or occurrence == "unbounded" else maximum * int(occurrence)
+                if child.tag == XS + "element" and child.get("name"):
+                    result.append(ElementInfo(child.get("name"), _strip_prefix(child.get("type")),
+                                              child_minimum, child_maximum))
+                elif child.tag != XS + "element":
+                    collect(child, 0 if child.tag == XS + "choice" else child_minimum, child_maximum)
+
+        collect(container)
         return result
 
     def element(self, type_name: str, tag: str) -> ElementInfo | None:
@@ -114,7 +168,8 @@ def load(xsd_dir: str) -> SchemaInfo:
 
 def for_package(pkg) -> SchemaInfo:
     xsd = pkg.xsd_path()
-    return load(str(xsd.parent if xsd else BUNDLED_XSD_DIR))
+    directory = xsd.parent if xsd else schema_directory(pkg.root.get("schemaVersion", ""))
+    return load(str(directory)) if directory is not None else SchemaInfo(None)
 
 
 _SUFFIXED = {
@@ -142,6 +197,11 @@ def type_name(pkg, el, info: SchemaInfo) -> str:
     explicit = el.get(_XSI_TYPE)
     if explicit:
         return _strip_prefix(explicit)
+    parent = el.getparent()
+    if parent is not None and isinstance(parent.tag, str):
+        definition = info.element(type_name(pkg, parent, info), etree.QName(el).localname)
+        if definition is not None and definition.type:
+            return definition.type
     kind = pkg.kind(el)
     if kind in _SUFFIXED:
         base = _SUFFIXED[kind]

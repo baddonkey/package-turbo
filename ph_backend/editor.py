@@ -3,6 +3,7 @@
 from PySide6.QtCore import Property, QObject, Signal, Slot
 
 from . import notes, schema, statistics, timespan, xsd_info
+from .metadata_requirements import is_mandatory_metadata_field
 from .sip import SipPackage, localname
 
 _TAB_FOR_KIND = {
@@ -38,8 +39,12 @@ class MetadataEditor(QObject):
         self._tab = "ueberblick"
         self._validation_summary: list[dict] = []
         self._issues: dict[tuple[int, str], str] = {}
+        self.edit_guard = None
+        self.edit_operation = None
+        self._package_token = 0
 
     def set_package(self, pkg: SipPackage | None) -> None:
+        self._package_token += 1
         self._pkg = pkg
         self._selected = {}
         self._tab = "ueberblick"
@@ -78,6 +83,10 @@ class MetadataEditor(QObject):
     @Property(bool, notify=contentChanged)
     def hasPackage(self) -> bool:
         return self._pkg is not None
+
+    @Property(int, notify=contentChanged)
+    def packageToken(self) -> int:
+        return self._package_token
 
     @Property(bool, notify=contentChanged)
     def readOnly(self) -> bool:
@@ -187,7 +196,24 @@ class MetadataEditor(QObject):
         el = pkg.element(key) if pkg else None
         if el is None or pkg.read_only or pkg.kind(el) in schema.READ_ONLY_KINDS:
             return None
+        info = self._schema()
+        if pkg.kind(el) in ("vorgang", "aktivitaet") and not info.has_type(xsd_info.type_name(pkg, el, info)):
+            return None
+        if self.edit_guard is not None and not self.edit_guard():
+            self.contentChanged.emit()
+            return None
         return el
+
+    def _apply_edit(self, action) -> bool:
+        try:
+            if self.edit_operation is not None:
+                return self.edit_operation(action)
+            action(self._pkg)
+            return True
+        except (OSError, ValueError) as exc:
+            self.inputError.emit(str(exc))
+            self.contentChanged.emit()
+            return False
 
     @Slot(int, str, str)
     def setField(self, key: int, tag: str, value: str) -> None:
@@ -195,11 +221,54 @@ class MetadataEditor(QObject):
         if el is None:
             return
         pkg = self._pkg
+        info = self._schema()
+        definition = info.element(xsd_info.type_name(pkg, el, info), tag)
+        if definition is not None and definition.max_occurs != 1:
+            self.inputError.emit("Repeated values must be edited as a list.")
+            return
         old = pkg.text(el, tag)
         if old == value.strip():
             return
-        pkg.set_text(el, tag, value, required=self._is_required(el, tag))
+        if not self._apply_edit(lambda package: package.set_text(el, tag, value, required=self._is_required(el, tag))):
+            return
         self._emit_edit(el, tag, old, value.strip())
+
+    @Slot(int, str, "QVariantList")
+    def setRepeatedField(self, key: int, tag: str, values) -> None:
+        el = self._editable_element(key)
+        if el is None:
+            return
+        structured = bool(values) and all(isinstance(value, dict) for value in values)
+        normalized = [str(value.get("value", "") if structured else value).strip() for value in values]
+        try:
+            indices = [int(value.get("sourceIndex", -1)) for value in values] if structured else None
+        except (ValueError, TypeError):
+            self.inputError.emit("Repeated-value row identity is invalid.")
+            return
+        old = self._pkg.repeated_texts(el, tag)
+        if old == normalized and (indices is None or indices == list(range(len(old)))):
+            return
+        if not self._apply_edit(lambda package: package.set_repeated_texts(el, tag, normalized, indices)):
+            return
+        import json
+
+        self._emit_edit(el, tag, json.dumps(old, ensure_ascii=False), json.dumps(normalized, ensure_ascii=False))
+
+    @Slot(int, int, str, str)
+    def setReferenceAttribute(self, key: int, index: int, name: str, value: str) -> None:
+        el = self._editable_element(key)
+        if el is None:
+            return
+        references = self._pkg.children(el, "dateiRef")
+        if index < 0 or index >= len(references):
+            self.inputError.emit("The file reference no longer exists.")
+            return
+        old = references[index].get(name, "")
+        if old == value.strip():
+            return
+        if not self._apply_edit(lambda package: package.set_reference_attribute(el, index, name, value)):
+            return
+        self._emit_edit(el, f"dateiRef[{index + 1}]/@{name}", old, value.strip())
 
     @Slot(int, str, str, str)
     def setTimeSpan(self, key: int, tag: str, start: str, end: str) -> None:
@@ -209,13 +278,14 @@ class MetadataEditor(QObject):
         pkg = self._pkg
         old = timespan.format_span(*pkg.time_span_display(el, tag))
         try:
-            pkg.set_time_span(el, tag, start, end)
+            if not self._apply_edit(lambda package: package.set_time_span(el, tag, start, end)):
+                return
         except timespan.DateFormatError as exc:
             self.inputError.emit(str(exc))
             self.contentChanged.emit()
             return
         new = timespan.format_span(*pkg.time_span_display(el, tag))
-        if old != new:
+        if self.edit_operation is not None or old != new:
             self._emit_edit(el, tag, old, new)
 
     @Slot(int, str, str)
@@ -226,13 +296,14 @@ class MetadataEditor(QObject):
         pkg = self._pkg
         old = pkg.time_point_display(el, tag)
         try:
-            pkg.set_time_point(el, tag, text)
+            if not self._apply_edit(lambda package: package.set_time_point(el, tag, text)):
+                return
         except timespan.DateFormatError as exc:
             self.inputError.emit(str(exc))
             self.contentChanged.emit()
             return
         new = pkg.time_point_display(el, tag)
-        if old != new:
+        if self.edit_operation is not None or old != new:
             self._emit_edit(el, tag, old, new)
 
     @Slot(int, "QVariantList")
@@ -243,9 +314,11 @@ class MetadataEditor(QObject):
             return
         pkg = self._pkg
         old = _format_additional(pkg.additional_data(el))
-        pkg.set_additional_data(el, [(str(i.get("name", "")), str(i.get("value", ""))) for i in items])
+        if not self._apply_edit(lambda package: package.set_additional_data(
+                el, [(str(item.get("name", "")), str(item.get("value", ""))) for item in items])):
+            return
         new = _format_additional(pkg.additional_data(el))
-        if old != new:
+        if self.edit_operation is not None or old != new:
             self._emit_edit(el, "zusatzDaten", old, new)
 
     # ---------------------------------------------------------------- internals
@@ -262,19 +335,31 @@ class MetadataEditor(QObject):
         definition = next((d for d in schema.field_defs(self._pkg.kind(el)) if d.tag == tag), None)
         if definition is not None and definition.required:
             return True
+        if tag == "entstehungszeitraumAnmerkung" and self._pkg.kind(el) in {"dossier", "subdossier"}:
+            span = self._pkg.child(el, "entstehungszeitraum")
+            if span is not None and any(self._pkg.text(point, "ca").lower() == "true"
+                                        for point in self._pkg.children(span)):
+                return True
         info = self._schema()
-        return info.is_required(xsd_info.type_name(self._pkg, el, info), tag)
+        return (info.is_required(xsd_info.type_name(self._pkg, el, info), tag)
+                or is_mandatory_metadata_field(self._pkg.root.get("schemaVersion", ""),
+                                               self._pkg.delivery_type, self._pkg.kind(el), tag))
 
     def _field(self, el, definition: schema.FieldDef, type_name: str, editable: bool) -> dict:
         pkg = self._pkg
         info = self._schema()
         choices = info.choices(type_name, definition.tag) if definition.type in (schema.TEXT, schema.READONLY) else []
+        element_info = info.element(type_name, definition.tag)
+        repeated = element_info is not None and element_info.max_occurs != 1 and info.is_simple(element_info.type)
         field = {
             "tag": definition.tag,
             "label": definition.label,
-            "type": "choice" if choices and definition.type == schema.TEXT else definition.type,
-            "choices": [""] + choices if choices and not info.is_required(type_name, definition.tag) else choices,
-            "required": definition.required or info.is_required(type_name, definition.tag),
+            "type": "repeated" if repeated else "choice" if choices and definition.type == schema.TEXT else definition.type,
+            "values": pkg.repeated_texts(el, definition.tag) if repeated else [],
+            "minimum": element_info.min_occurs if element_info is not None else 0,
+            "maximum": element_info.max_occurs if element_info is not None and element_info.max_occurs is not None else -1,
+            "choices": [""] + choices if choices and not self._is_required(el, definition.tag) else choices,
+            "required": self._is_required(el, definition.tag),
             "editable": editable and definition.type != schema.READONLY,
             "help": schema.help_for(definition.tag),
             "error": self._issues.get((pkg.key(el), definition.tag), ""),
@@ -297,6 +382,8 @@ class MetadataEditor(QObject):
         info = self._schema()
         type_name = xsd_info.type_name(pkg, el, info)
         editable = not pkg.read_only and kind not in schema.READ_ONLY_KINDS
+        legacy_process = kind in ("vorgang", "aktivitaet") and not info.has_type(type_name)
+        editable = editable and not legacy_process
         allowed = {e.name for e in info.elements(type_name)}
         definitions = [d for d in schema.field_defs(kind) if not allowed or d.tag in allowed
                        or pkg.child(el, d.tag) is not None]
@@ -309,6 +396,10 @@ class MetadataEditor(QObject):
                 continue
             known.add(tag)
             more.append(self._field(el, schema.FieldDef(tag, schema.label_for(tag)), type_name, editable))
+        if legacy_process:
+            primary = [{"tag": "", "label": "Inhalt", "type": schema.READONLY, "value": el.text or "",
+                        "editable": False, "required": False, "choices": [], "error": "", "help": ""}]
+            more = []
         if kind == "datei":
             rel = pkg.relpath(el)
             primary.append({"tag": "", "label": "Pfad", "type": schema.READONLY, "required": False, "editable": False,
@@ -321,6 +412,7 @@ class MetadataEditor(QObject):
             "name": pkg.display_name(el),
             "noteCount": len(notes.notes_of(pkg, el)),
             "canHaveNotes": notes.can_have_notes(pkg, el),
+            "references": pkg.reference_attributes(el),
             "canHaveAdditionalData": "zusatzDaten" in allowed,
             "additionalData": [{"name": n, "value": v} for n, v in pkg.additional_data(el)],
             "readOnly": not editable,

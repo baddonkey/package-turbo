@@ -3,9 +3,11 @@
 import re
 import shutil
 import unicodedata
+import uuid
 from pathlib import Path, PurePosixPath
 
 from .sip import SipPackage, file_checksum, localname
+from .processing import copy_file
 
 ALLOWED_NAME = re.compile(r"^[A-Za-z0-9_.\-]+$")
 DEFAULT_ALGORITHM = "MD5"
@@ -111,6 +113,9 @@ def import_paths(pkg: SipPackage, target_folder, sources, merge: bool = True, ov
     stats = {"files": 0, "folders": 0, "replaced": 0, "skipped": 0}
 
     def copy_into(folder_el, source: Path) -> None:
+        attributes = getattr(source.lstat(), "st_file_attributes", 0)
+        if source.is_symlink() or attributes & 0x400:
+            raise FileOperationError("Linked sources and junctions cannot be imported safely.")
         dest_dir = _folder_path(pkg, folder_el)
         if source.is_dir():
             existing = _find(pkg, folder_el, "ordner", source.name)
@@ -128,7 +133,7 @@ def import_paths(pkg: SipPackage, target_folder, sources, merge: bool = True, ov
             if existing is not None and not overwrite:
                 stats["skipped"] += 1
                 return
-            shutil.copy2(source, dest_dir / source.name)
+            copy_file(source, dest_dir / source.name)
             if existing is None:
                 make_file_entry(pkg, folder_el, dest_dir / source.name)
                 stats["files"] += 1
@@ -137,7 +142,8 @@ def import_paths(pkg: SipPackage, target_folder, sources, merge: bool = True, ov
                 stats["replaced"] += 1
 
     for source in map(Path, sources):
-        if source.resolve().is_relative_to(root):
+        if (source.resolve().is_relative_to(root) or source.resolve().is_relative_to(pkg.file_root.resolve())
+            or source.resolve().is_relative_to(root.with_name(root.name + ".package-turbo"))):
             raise FileOperationError("Dateien aus dem Paket selbst können nicht importiert werden.")
         copy_into(target_folder, source)
     pkg.invalidate_file_index()
@@ -174,9 +180,14 @@ def rename(pkg: SipPackage, el, new_name: str, validate: bool = True) -> None:
     # A case-only rename needs an intermediate step on case-insensitive file systems.
     if target.exists() and target.resolve() != source.resolve():
         raise FileOperationError(f"«{new_name}» existiert bereits im Dateisystem.")
-    temp = source.with_name(source.name + ".renaming")
+    temp = source.with_name(".renaming-" + uuid.uuid4().hex)
     source.rename(temp)
-    temp.rename(target)
+    try:
+        temp.rename(target)
+    except OSError:
+        if not source.exists():
+            temp.rename(source)
+        raise
     if not pkg.text(el, "originalName"):
         pkg.set_text(el, "originalName", old_name)
     pkg.set_text(el, "name", new_name, required=True)
@@ -207,10 +218,13 @@ def delete_entries(pkg: SipPackage, elements) -> int:
 def replace_file(pkg: SipPackage, file_el, source: Path) -> None:
     """Datei ersetzen: new content, same name and metadata, new checksum."""
     _require_sip(pkg)
+    attributes = getattr(source.lstat(), "st_file_attributes", 0)
+    if source.is_symlink() or attributes & 0x400:
+        raise FileOperationError("Linked sources cannot replace package files.")
     target = pkg.fs_path(file_el)
     if target is None:
         raise FileOperationError("Die Datei liegt ausserhalb des Pakets.")
-    shutil.copyfile(source, target)
+    copy_file(source, target, preserve=False)
     _update_checksum(pkg, file_el)
 
 
@@ -283,8 +297,8 @@ def denormalize(pkg: SipPackage) -> int:
 # ---------------------------------------------------------------- validation fix-ups (10.4.7, 10.6)
 
 def _resolve_inside(pkg: SipPackage, rel_posix: str) -> Path:
-    path = pkg.root_dir.joinpath(*PurePosixPath(rel_posix).parts)
-    if not path.resolve().is_relative_to(pkg.root_dir.resolve()) or path.resolve() == pkg.root_dir.resolve():
+    path = pkg.file_root.joinpath(*PurePosixPath(rel_posix).parts)
+    if not path.resolve().is_relative_to(pkg.file_root.resolve()) or path.resolve() == pkg.file_root.resolve():
         raise FileOperationError("Der Pfad liegt ausserhalb des Pakets.")
     return path
 
@@ -293,7 +307,7 @@ def delete_from_file_system(pkg: SipPackage, rel_posix: str) -> None:
     """Unzulässige / überzählige Datei oder Ordner im Dateisystem löschen."""
     _require_sip(pkg)
     path = _resolve_inside(pkg, rel_posix)
-    if path == pkg.metadata_path or path == pkg.metadata_path.parent:
+    if path == pkg.file_root / "header" / "metadata.xml" or path == pkg.file_root / "header":
         raise FileOperationError("metadata.xml und der Ordner header können nicht gelöscht werden.")
     if path.is_dir():
         shutil.rmtree(path)
@@ -345,14 +359,17 @@ def set_delivery_type(pkg: SipPackage) -> str:
 
 
 def restore_header_xsd(pkg: SipPackage) -> int:
-    """Ins SIP übernehmen: adds missing XSD files (bundled eCH-0160 v1.2) to header/xsd and the metadata."""
-    from .xsd_info import BUNDLED_XSD_DIR
+    """Adds missing bundled schemas matching the package's declared version."""
+    from .xsd_info import schema_directory
 
     _require_sip(pkg)
-    xsd_dir = pkg.root_dir / "header" / "xsd"
+    schema_dir = schema_directory(pkg.root.get("schemaVersion", ""))
+    if schema_dir is None:
+        raise FileOperationError("No matching bundled schema is available; restore the package's original XSDs.")
+    xsd_dir = pkg.file_root / "header" / "xsd"
     xsd_dir.mkdir(parents=True, exist_ok=True)
     added = 0
-    for source in sorted(BUNDLED_XSD_DIR.glob("*.xsd")):
+    for source in sorted(schema_dir.glob("*.xsd")):
         if not (xsd_dir / source.name).exists():
             shutil.copy2(source, xsd_dir / source.name)
             added += 1

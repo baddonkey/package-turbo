@@ -1,4 +1,4 @@
-"""Validation rules of the Package Handler (chapter 10 of the user documentation)."""
+"""Package structure, metadata, fixity and archival acceptance checks."""
 
 import re
 from collections import defaultdict
@@ -8,7 +8,8 @@ from pathlib import Path, PurePosixPath
 from lxml import etree
 
 from . import file_formats, files, schema, timespan
-from .sip import SipPackage, file_checksum, localname
+from .metadata_requirements import ENTITY_TAGS, RELEASE_BY_SCHEMA_VERSION, mandatory_metadata_fields
+from .sip import SipPackage, UnsupportedChecksumError, file_checksum, localname
 
 ERROR = "error"
 WARNING = "warning"
@@ -36,6 +37,7 @@ CHECKS = [
     Check("package_size", "Paketgrösse", _STRUCTURE, True),
     Check("path_length", "Pfadlänge", _STRUCTURE, False),
     Check("checksum", "Prüfsumme", _STRUCTURE, True),
+    Check("invalid_reference", "Dateireferenz", _FILE_SYSTEM, False),
     Check("sip_name", "SIP-Name", _STRUCTURE, True),
     Check("invalid_value", "Ungültige Angabe", _STRUCTURE, False),
     Check("illegal_entries", "Unzulässige Datei", _STRUCTURE, True),
@@ -65,6 +67,7 @@ CHECKS = [
 ]
 CHECK_NAMES = [c.name for c in CHECKS]
 _NAME_OF = {c.id: c.name for c in CHECKS}
+_COMPLEX_DATA_TYPES = {"zeitraum", "historischerzeitraum", "historischerzeitpunkt"}
 
 
 class Validator:
@@ -116,7 +119,7 @@ class Validator:
         return [(el, p) for el, p in self._toc_entries() if localname(el) == "datei" and p.parts[:1] == ("content",)]
 
     def _fs_entries(self) -> dict[PurePosixPath, Path]:
-        root = self.pkg.root_dir
+        root = self.pkg.file_root
         result = {}
         for top in ("header", "content"):
             base = root / top
@@ -153,7 +156,7 @@ class Validator:
     def _check_package_size(self):
         if not self.pkg.root_dir:
             return
-        total = sum(p.stat().st_size for p in self.pkg.root_dir.rglob("*") if p.is_file())
+        total = sum(p.stat().st_size for p in self.pkg.file_root.rglob("*") if p.is_file())
         if total > MAX_PACKAGE_SIZE:
             self._add("package_size", None, f"Das Paket ist {total / 1024 ** 3:.2f} GB gross (maximal 8 GB).",
                       value=str(total))
@@ -181,7 +184,11 @@ class Validator:
                 continue
             if path is None or not path.is_file():
                 continue
-            actual = file_checksum(path, algorithm)
+            try:
+                actual = file_checksum(path, algorithm)
+            except UnsupportedChecksumError as exc:
+                self._add("checksum", el, str(exc), "pruefalgorithmus", algorithm)
+                continue
             if actual.lower() != expected.lower():
                 self._add("checksum", el, f"Die Prüfsumme ({algorithm}) stimmt nicht mit dem Dateiinhalt überein.",
                           "pruefsumme", expected)
@@ -205,7 +212,7 @@ class Validator:
                           "schutzfrist", period)
 
     def _check_illegal_entries(self):
-        root = self.pkg.root_dir
+        root = self.pkg.file_root
         if not root:
             return
         for path in root.iterdir():
@@ -216,7 +223,7 @@ class Validator:
                           path=path.name)
 
     def _check_header_content(self):
-        root = self.pkg.root_dir
+        root = self.pkg.file_root
         if not root:
             return
         header = root / "header"
@@ -338,6 +345,23 @@ class Validator:
                     self._add("surplus_folder", None, "Der Ordner ist in den Metadaten nicht aufgeführt.",
                               value=rel.as_posix(), object_kind="ordner", object_name=rel.name, path=rel.as_posix())
 
+    def _check_invalid_reference(self):
+        pkg = self.pkg
+        for owner in pkg.root.iter():
+            for reference in pkg.children(owner, "dateiRef"):
+                identifiers = (reference.text or "").split()
+                if not identifiers:
+                    self._add("invalid_reference", owner, "Die Dateireferenz enthält keine Datei-ID.",
+                              "dateiRef")
+                    continue
+                for identifier in identifiers:
+                    file_element = pkg.file_by_id(identifier)
+                    path = pkg.relpath(file_element) if file_element is not None else None
+                    if path is None or not path.parts or path.parts[0] != "content":
+                        self._add("invalid_reference", owner,
+                                  "Die Dateireferenz verweist auf keine Primärdatei im Ordner content/.",
+                                  "dateiRef", identifier)
+
     # ---------------------------------------------------------------- completeness and plausibility
 
     def _check_document_without_files(self):
@@ -362,25 +386,49 @@ class Validator:
 
     def _check_missing_values(self):
         pkg = self.pkg
-        files_delivery = pkg.delivery_type.upper() == "FILES"
-        delivery = pkg.delivery
-        for tag in ("ablieferungstyp", "ablieferndeStelle", "ablieferungsnummer", "schutzfristenkategorie", "schutzfrist"):
-            if not pkg.text(delivery, tag):
-                self._add("missing_values", delivery, "Das Metadatum ist nicht ausgefüllt.", tag)
-        if pkg.provenance is not None and not pkg.text(pkg.provenance, "aktenbildnerName"):
-            self._add("missing_values", pkg.provenance, "Das Metadatum ist nicht ausgefüllt.", "aktenbildnerName")
-        system = pkg.classification_system
-        if system is not None and not pkg.text(system, "name"):
-            self._add("missing_values", system, "Das Metadatum ist nicht ausgefüllt.", "name",
-                      severity=WARNING if files_delivery else ERROR)
-        for position in pkg.iter_kind("ordnungssystemposition"):
-            for tag in ("nummer", "titel"):
-                if not pkg.text(position, tag):
-                    self._add("missing_values", position, "Das Metadatum ist nicht ausgefüllt.", tag,
-                              severity=WARNING if files_delivery else ERROR)
-        for el in pkg.iter_kind("dossier", "dokument"):
-            if not pkg.text(el, "titel"):
-                self._add("missing_values", el, "Das Metadatum ist nicht ausgefüllt.", "titel")
+        release = RELEASE_BY_SCHEMA_VERSION.get(pkg.root.get("schemaVersion", ""))
+        profile = pkg.delivery_type.upper()
+        if release is None or profile not in {"GEVER", "FILES"}:
+            return
+        for requirement in mandatory_metadata_fields():
+            if requirement["release"] != release or requirement["profile"] != profile:
+                continue
+            entity = requirement["entity"]
+            if entity == "Paket":
+                owners = [pkg.root]
+            elif entity == "Ablieferung":
+                owners = [pkg.delivery] if pkg.delivery is not None else []
+            elif entity == "Provenienz":
+                owners = [pkg.provenance] if pkg.provenance is not None else []
+            elif entity == "Inhaltsv.":
+                owners = [pkg.table_of_contents] if pkg.table_of_contents is not None else []
+            else:
+                owners = list(pkg.iter_kind(ENTITY_TAGS[entity]))
+            field = requirement["xsdName"]
+            data_type = requirement["dataType"].lower()
+            is_attribute = field in {"id", "schemaVersion"} or "attribute" in data_type
+            is_complex = ("complex" in data_type or data_type in _COMPLEX_DATA_TYPES) and field != "dateiRef"
+            for owner in owners:
+                if is_attribute:
+                    value = owner.get(field, "")
+                    missing = not value.strip()
+                else:
+                    children = pkg.children(owner, field)
+                    values = [(child.text or "").strip() for child in children]
+                    value = next((item for item in values if item), "")
+                    missing = not children if is_complex else not children or not any(values)
+                if missing:
+                    self._add("missing_values", owner, "Das vorgeschriebene Metadatum ist nicht ausgefüllt.",
+                              field, value)
+
+        for dossier in pkg.iter_kind("dossier"):
+            span = pkg.child(dossier, "entstehungszeitraum")
+            approximate = span is not None and any(
+                pkg.text(endpoint, "ca").lower() == "true" for endpoint in pkg.children(span))
+            if approximate and not pkg.text(dossier, "entstehungszeitraumAnmerkung"):
+                self._add("missing_values", dossier,
+                          "Für den geschätzten Entstehungszeitraum fehlt die Begründung.",
+                          "entstehungszeitraumAnmerkung")
 
     def _check_identical_files(self):
         pkg = self.pkg

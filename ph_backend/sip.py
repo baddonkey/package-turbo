@@ -1,6 +1,5 @@
 """Loading, querying, editing and saving an eCH-0160 Submission Information Package (SIP)."""
 
-import hashlib
 import os
 import uuid
 import zipfile
@@ -8,12 +7,17 @@ from pathlib import Path, PurePosixPath
 
 from lxml import etree
 
-from . import schema, timespan
+from . import schema, timespan, xsd_info
+from .processing import digest_file
 
 HASH_ALGORITHMS = {"MD5": "md5", "SHA-1": "sha1", "SHA-256": "sha256", "SHA-512": "sha512"}
 
 
 class InvalidPackageError(Exception):
+    pass
+
+
+class UnsupportedChecksumError(ValueError):
     pass
 
 
@@ -38,11 +42,10 @@ def parse_xml(path: Path):
 
 
 def file_checksum(path: Path, algorithm: str) -> str:
-    digest = hashlib.new(HASH_ALGORITHMS.get(algorithm.upper(), "md5"))
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+    name = HASH_ALGORITHMS.get(algorithm.upper())
+    if name is None:
+        raise UnsupportedChecksumError(f"Unsupported checksum algorithm: {algorithm}")
+    return digest_file(path, name)
 
 
 class SipPackage:
@@ -51,8 +54,13 @@ class SipPackage:
         self.tree = tree
         self.root = tree.getroot()
         self.root_dir = Path(root_dir) if root_dir else None
+        self.file_root = self.root_dir
         self.read_only = read_only
         self.ns = etree.QName(self.root).namespace
+        self.version_supported = (self.ns == "http://bar.admin.ch/arelda/v4"
+                                  and xsd_info.schema_directory(self.root.get("schemaVersion", "")) is not None)
+        if not self.version_supported:
+            self.read_only = True
         self._by_key: dict[int, object] = {}
         self._key_of: dict[object, int] = {}
         self._next_key = 1
@@ -188,6 +196,37 @@ class SipPackage:
             c = self._insert_child(el, tag)
         c.text = value
 
+    def repeated_texts(self, el, tag: str) -> list[str]:
+        return [(child.text or "") for child in self.children(el, tag)]
+
+    def set_repeated_texts(self, el, tag: str, values: list[str], source_indices: list[int] | None = None) -> None:
+        info = xsd_info.for_package(self)
+        definition = info.element(xsd_info.type_name(self, el, info), tag)
+        if definition is None or definition.max_occurs == 1 or not info.is_simple(definition.type):
+            raise ValueError("The package schema does not define a repeated text field here.")
+        if len(values) < definition.min_occurs or definition.max_occurs is not None and len(values) > definition.max_occurs:
+            raise ValueError("The number of values violates the package schema.")
+        children = self.children(el, tag)
+        if any(len(child) for child in children):
+            raise ValueError("Complex existing values cannot be replaced by plain text.")
+        if source_indices is not None:
+            existing_indices = [index for index in source_indices if index >= 0]
+            if (len(source_indices) != len(values) or len(existing_indices) != len(set(existing_indices))
+                    or any(index < -1 or index >= len(children) for index in source_indices)):
+                raise ValueError("Repeated-value row identity is stale or invalid.")
+            chosen = [children[index] if index >= 0 else etree.Element(self.q(tag)) for index in source_indices]
+            for child in children:
+                el.remove(child)
+            for child, value in zip(chosen, values):
+                child.text = value
+                self.insert_element(el, child)
+            return
+        for index, value in enumerate(values):
+            child = children[index] if index < len(children) else self._insert_child(el, tag)
+            child.text = value
+        for child in children[len(values):]:
+            el.remove(child)
+
     def time_span(self, el, tag: str) -> tuple[str, str]:
         span = self.child(el, tag)
         return self.text(self.child(span, "von"), "datum"), self.text(self.child(span, "bis"), "datum")
@@ -294,7 +333,9 @@ class SipPackage:
         if before is not None:
             before.addprevious(new)
             return new
-        order = schema.CHILD_ORDER.get(self.kind(parent), [])
+        info = xsd_info.for_package(self)
+        definitions = info.elements(xsd_info.type_name(self, parent, info))
+        order = [definition.name for definition in definitions] or schema.CHILD_ORDER.get(self.kind(parent), [])
         tag = localname(new)
         rank = order.index(tag) if tag in order else len(order)
         for existing in self.children(parent):
@@ -346,9 +387,9 @@ class SipPackage:
         rel = self.relpath(el)
         if rel is None or self.root_dir is None:
             return None
-        path = self.root_dir.joinpath(*rel.parts)
+        path = self.file_root.joinpath(*rel.parts)
         # Names come from untrusted metadata; refuse anything escaping the package folder.
-        if not path.resolve().is_relative_to(self.root_dir.resolve()):
+        if not path.resolve().is_relative_to(self.file_root.resolve()):
             return None
         return path
 
@@ -359,20 +400,59 @@ class SipPackage:
     def referenced_files(self, el) -> list:
         result = []
         for ref in self.children(el, "dateiRef"):
-            file_el = self.file_by_id(ref.text or "")
-            if file_el is not None:
-                result.append(file_el)
+            for identifier in (ref.text or "").split():
+                file_el = self.file_by_id(identifier)
+                if file_el is not None:
+                    result.append(file_el)
         return result
 
     def referenced_ids(self) -> set[str]:
-        return {(r.text or "").strip() for r in self.root.iter(self.q("dateiRef"))}
+        return {identifier for reference in self.root.iter(self.q("dateiRef"))
+                for identifier in (reference.text or "").split()}
+
+    def reference_attributes(self, owner) -> list[dict]:
+        info = xsd_info.for_package(self)
+        definition = info.element(xsd_info.type_name(self, owner, info), "dateiRef")
+        allowed = info.attributes(definition.type) if definition is not None else []
+        result = []
+        for index, reference in enumerate(self.children(owner, "dateiRef")):
+            identifiers = (reference.text or "").split()
+            identifier = " ".join(identifiers)
+            names = []
+            for file_id in identifiers:
+                file_element = self.file_by_id(file_id)
+                names.append(self.display_name(file_element) if file_element is not None else file_id)
+            known = {attribute.name for attribute in allowed}
+            attributes = [{"name": attribute.name, "value": reference.get(attribute.name, ""),
+                           "editable": True, "required": attribute.required} for attribute in allowed]
+            attributes.extend({"name": name, "value": value, "editable": False, "required": False}
+                              for name, value in reference.attrib.items() if name not in known)
+            result.append({"index": index, "fileId": identifier, "name": ", ".join(names),
+                           "attributes": attributes})
+        return result
+
+    def set_reference_attribute(self, owner, index: int, name: str, value: str) -> None:
+        info = xsd_info.for_package(self)
+        definition = info.element(xsd_info.type_name(self, owner, info), "dateiRef")
+        allowed = info.attributes(definition.type) if definition is not None else []
+        attribute = next((attribute for attribute in allowed if attribute.name == name), None)
+        references = self.children(owner, "dateiRef")
+        if attribute is None or index < 0 or index >= len(references):
+            raise ValueError("The package schema does not allow this reference attribute.")
+        value = value.strip()
+        if not value and attribute.required:
+            raise ValueError("A required reference attribute cannot be removed.")
+        if value:
+            references[index].set(name, value)
+        else:
+            references[index].attrib.pop(name, None)
 
     def iter_kind(self, *names: str):
         for name in names:
             yield from self.root.iter(self.q(name))
 
     def xsd_path(self) -> Path | None:
-        xsd_dir = self.metadata_path.parent / "xsd"
+        xsd_dir = self.file_root / "header" / "xsd" if self.file_root else self.metadata_path.parent / "xsd"
         candidates = sorted(xsd_dir.glob("*.xsd")) if xsd_dir.is_dir() else []
         for c in candidates:
             if c.name.lower() == "arelda.xsd":
@@ -381,9 +461,18 @@ class SipPackage:
 
     # ---------------------------------------------------------------- persistence
 
+    def restore_xml(self, data: bytes) -> None:
+        self.tree = etree.ElementTree(etree.fromstring(data, _safe_parser()))
+        self.root = self.tree.getroot()
+        self._by_key.clear()
+        self._key_of.clear()
+        self.invalidate_file_index()
+
     def save(self) -> None:
         if self.read_only:
             raise PermissionError("Das Paket ist schreibgeschützt geöffnet.")
+        if self.file_root != self.root_dir:
+            raise PermissionError("Staged files must be saved through the package workspace.")
         tmp = self.metadata_path.with_suffix(".xml.tmp")
         self.tree.write(str(tmp), encoding="UTF-8", xml_declaration=True)
         os.replace(tmp, self.metadata_path)
@@ -392,6 +481,8 @@ class SipPackage:
         self.tree.write(str(dest), encoding="UTF-8", xml_declaration=True)
 
     def zip_to(self, dest: str | Path) -> None:
+        if self.file_root != self.root_dir:
+            raise InvalidPackageError("Commit staged files before exporting the package.")
         if self.root_dir is None:
             raise InvalidPackageError("Nur ein vollständiges SIP kann gezippt werden.")
         base = self.root_dir.parent

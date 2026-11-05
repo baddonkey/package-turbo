@@ -23,9 +23,125 @@ def test_new_package_is_schema_valid(new_pkg):
     assert not full & {"checksum", "surplus_file", "missing_file", "header_content", "sip_name"}
 
 
+@pytest.mark.parametrize("version", ["1.1", "1.2", "1.3"])
+def test_structured_process_activity_creation_and_editing(tmp_path, version):
+    from ph_backend.editor import MetadataEditor
+
+    pkg = package_factory.create_package(tmp_path, "SIP_20261105_Test_Process", "Test", version=version)
+    dossier = structure.add_objects(pkg, next(pkg.iter_kind("ordnungssystemposition")), "dossier")[0]
+    process = structure.add_objects(pkg, dossier, "vorgang")[0]
+    activity = structure.add_objects(pkg, process, "aktivitaet")[0]
+    assert process.get("id") is None and activity.get("id") is None
+    editor = MetadataEditor()
+    editor.set_package(pkg)
+    editor.setField(pkg.key(process), "titel", "Process title")
+    editor.setField(pkg.key(activity), "vorschreibung", "Activity instruction")
+    editor.setRepeatedField(pkg.key(process), "verweis", ["Reference one", "Reference two"])
+    editor.setRepeatedField(pkg.key(activity), "bemerkung", ["First remark", "Second remark"])
+    assert pkg.text(process, "titel") == "Process title"
+    assert pkg.text(activity, "vorschreibung") == "Activity instruction"
+    assert _schema_errors(pkg) == []
+    pkg.save()
+    reopened = SipPackage.open_folder(pkg.root_dir)
+    assert reopened.repeated_texts(next(reopened.iter_kind("aktivitaet")), "bemerkung") == ["First remark", "Second remark"]
+
+
+def test_v10_legacy_process_is_preserved_without_structured_conversion(tmp_path):
+    from ph_backend.editor import MetadataEditor
+
+    pkg = package_factory.create_package(tmp_path, "SIP_20261105_Test_Legacy", "Test", version="1.0")
+    dossier = structure.add_objects(pkg, next(pkg.iter_kind("ordnungssystemposition")), "dossier")[0]
+    process = pkg.create_child(dossier, "vorgang")
+    process.text = "Legacy process description"
+    assert "vorgang" not in structure.allowed_children(pkg, dossier)
+    assert "aktivitaet" not in structure.allowed_children(pkg, process)
+    with pytest.raises(structure.StructureError, match="structured"):
+        structure.add_objects(pkg, dossier, "vorgang")
+    with pytest.raises(structure.StructureError, match="structured"):
+        structure.add_objects(pkg, process, "aktivitaet")
+    editor = MetadataEditor()
+    editor.set_package(pkg)
+    editor.showElement(pkg.key(process))
+    assert editor.sections[0]["readOnly"]
+    assert editor.sections[0]["primary"][0]["value"] == "Legacy process description"
+    editor.setField(pkg.key(process), "titel", "Do not convert")
+    assert process.text == "Legacy process description" and not len(process)
+    assert _schema_errors(pkg) == []
+
+
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+def test_files_schema_does_not_offer_gever_processes(tmp_path, version):
+    pkg = package_factory.create_package(tmp_path, "SIP_20261105_Test_FilesProcess", "Test",
+                                         version=version, delivery_type="FILES")
+    dossier = structure.add_objects(pkg, next(pkg.iter_kind("ordnungssystemposition")), "dossier")[0]
+    assert "vorgang" not in structure.allowed_children(pkg, dossier)
+    with pytest.raises(structure.StructureError):
+        structure.add_objects(pkg, dossier, "vorgang")
+    assert _schema_errors(pkg) == []
+
+
 def test_new_files_package(tmp_path):
     pkg = package_factory.create_package(tmp_path, "SIP_20260104_Amt_X", "Amt", delivery_type="FILES")
     assert pkg.delivery_type == "FILES" and _schema_errors(pkg) == []
+
+
+@pytest.mark.parametrize("version,schema_version", [("1.0", "4.0"), ("1.1", "4.1"), ("1.2", "5.0"), ("1.3", "5.1")])
+@pytest.mark.parametrize("delivery_type", ["GEVER", "FILES"])
+def test_creation_preserves_selected_schema_version(tmp_path, version, schema_version, delivery_type):
+    pkg = package_factory.create_package(tmp_path, "SIP_20260104_Amt_Version", "Amt",
+                                         delivery_type=delivery_type, version=version)
+    assert pkg.root.get("schemaVersion") == schema_version
+    pkg.set_text(pkg.delivery, "ablieferungsnummer", "42")
+    pkg.save()
+    reopened = SipPackage.open_folder(pkg.root_dir)
+    assert reopened.root.get("schemaVersion") == schema_version
+    assert _schema_errors(reopened) == []
+
+
+def test_unknown_creation_version_does_not_create_package(tmp_path):
+    with pytest.raises(PackageCreationError, match="Unsupported creation version"):
+        package_factory.create_package(tmp_path, "SIP_20260104_Amt_Future", "Amt", version="9.0")
+    assert not (tmp_path / "SIP_20260104_Amt_Future").exists()
+
+
+@pytest.mark.parametrize("delivery_type", ["GEVER", "FILES"])
+def test_recursive_mappen_use_contextual_schema_type(tmp_path, delivery_type):
+    pkg = package_factory.create_package(tmp_path, "SIP_20260104_Amt_Mappe", "Amt", delivery_type=delivery_type)
+    position = next(pkg.iter_kind("ordnungssystemposition"))
+    outer = structure.add_objects(pkg, position, "mappe")[0]
+    inner = structure.add_objects(pkg, outer, "mappe")[0]
+    structure.add_objects(pkg, inner, "dossier")
+    assert "dossier" in structure.allowed_children(pkg, outer)
+    assert "dokument" not in structure.allowed_children(pkg, outer)
+    with pytest.raises(structure.StructureError, match="package schema"):
+        structure.add_objects(pkg, outer, "dokument")
+    info = xsd_info.for_package(pkg)
+    assert xsd_info.type_name(pkg, outer, info) == xsd_info.type_name(pkg, inner, info)
+    assert _schema_errors(pkg) == []
+    pkg.save()
+    assert _schema_errors(SipPackage.open_folder(pkg.root_dir)) == []
+
+
+def test_v12_mappen_reject_v13_only_recursion(tmp_path):
+    pkg = package_factory.create_package(tmp_path, "SIP_20260104_Amt_Legacy", "Amt", version="1.2")
+    position = next(pkg.iter_kind("ordnungssystemposition"))
+    outer = structure.add_objects(pkg, position, "mappe")[0]
+    assert "mappe" not in structure.allowed_children(pkg, outer)
+    with pytest.raises(structure.StructureError, match="package schema"):
+        structure.add_objects(pkg, outer, "mappe")
+    assert _schema_errors(pkg) == []
+
+
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+def test_schema_restore_matches_original_version(tmp_path, version):
+    from lxml import etree
+
+    pkg = package_factory.create_package(tmp_path, "SIP_20260104_Amt_Restore", "Amt", version=version)
+    pkg.xsd_path().unlink()
+    assert files.restore_header_xsd(pkg) == 1
+    restored = etree.parse(str(pkg.xsd_path())).getroot()
+    assert restored.get("targetNamespace") == pkg.ns
+    assert _schema_errors(pkg) == []
 
 
 def test_new_package_name_rules(tmp_path):

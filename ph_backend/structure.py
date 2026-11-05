@@ -13,16 +13,20 @@ class StructureError(Exception):
 
 
 CONTAINERS = {
-    "ordnungssystemposition": ("ordnungssystem", "ordnungssystemposition"),
-    "dossier": ("ordnungssystemposition", "dossier", "subdossier"),
+    "ordnungssystemposition": ("ordnungssystem", "ordnungssystemposition", "mappe"),
+    "dossier": ("ordnungssystemposition", "dossier", "subdossier", "mappe"),
     "dokument": ("dossier", "subdossier", "mappe"),
-    "mappe": ("ordnungssystem", "ordnungssystemposition", "dossier", "subdossier", "mappe"),
+    "mappe": ("ablieferung", "ordnungssystem", "ordnungssystemposition", "dossier", "subdossier", "mappe"),
+    "vorgang": ("dossier", "subdossier"),
+    "aktivitaet": ("vorgang",),
 }
 DEFAULT_TITLES = {
     "ordnungssystemposition": "Neue Ordnungssystemposition",
     "dossier": "Neues Dossier",
     "dokument": "Neues Dokument",
     "mappe": "Neue Mappe",
+    "vorgang": "Neuer Vorgang",
+    "aktivitaet": "Neue Aktivität",
 }
 
 
@@ -31,11 +35,33 @@ def _check_parent(pkg: SipPackage, parent, tag: str) -> None:
     if kind not in CONTAINERS[tag]:
         raise StructureError(f"{schema.KIND_LABELS.get(tag, tag)} kann nicht unter "
                              f"{schema.KIND_LABELS.get(kind, kind)} angelegt werden.")
+    info = xsd_info.for_package(pkg)
+    parent_type = xsd_info.type_name(pkg, parent, info)
+    if tag in ("vorgang", "aktivitaet") and not info.has_type(parent_type):
+        raise StructureError("This package version does not support a structured process/activity here.")
+    if info.has_type(parent_type):
+        definition = info.element(parent_type, tag)
+        if definition is None or (definition.max_occurs is not None
+                                  and len(pkg.children(parent, tag)) >= definition.max_occurs):
+            raise StructureError(f"{tag} is not permitted here by the package schema ({parent_type}).")
+        if tag in ("vorgang", "aktivitaet") and not info.has_type(definition.type):
+            raise StructureError("This package version does not support a structured process/activity here.")
     if tag == "ordnungssystemposition" and pkg.children(parent, "dossier"):
         raise StructureError("Unter einer Ordnungssystemposition mit Dossiers können keine weiteren "
                              "Ordnungssystempositionen angelegt werden.")
     if tag == "dossier" and kind == "ordnungssystemposition" and pkg.children(parent, "ordnungssystemposition"):
         raise StructureError("Dossiers können nur auf der untersten Stufe des Ordnungssystems angelegt werden.")
+
+
+def allowed_children(pkg: SipPackage, parent) -> list[str]:
+    result = []
+    for tag in CONTAINERS:
+        try:
+            _check_parent(pkg, parent, tag)
+        except StructureError:
+            continue
+        result.append(tag)
+    return result
 
 
 def _number_of(pkg: SipPackage, el) -> str:
@@ -65,12 +91,16 @@ def add_objects(pkg: SipPackage, parent, tag: str, count: int = 1, title: str | 
     _check_parent(pkg, parent, tag)
     created = []
     for _ in range(max(1, count)):
-        el = pkg.create_child(parent, tag, with_id=True)
+        _check_parent(pkg, parent, tag)
+        info = xsd_info.for_package(pkg)
+        element_info = info.element(xsd_info.type_name(pkg, parent, info), tag)
+        attributes = info.attributes(element_info.type) if element_info is not None else []
+        el = pkg.create_child(parent, tag, with_id=any(attribute.name == "id" for attribute in attributes))
         if tag == "ordnungssystemposition":
             pkg.set_text(el, "nummer", _next_number(pkg, parent, tag), required=True)
         elif tag == "dossier":
             pkg.set_text(el, "aktenzeichen", _next_number(pkg, parent, tag), required=True)
-        pkg.set_text(el, "titel", title or DEFAULT_TITLES[tag], required=True)
+        pkg.set_text(el, "vorschreibung" if tag == "aktivitaet" else "titel", title or DEFAULT_TITLES[tag], required=True)
         if tag == "dokument":
             pkg.set_text(el, "erscheinungsform", "digital")
         fill_required(pkg, el)
@@ -86,6 +116,10 @@ def fill_required(pkg: SipPackage, el) -> None:
     info = xsd_info.for_package(pkg)
     for element in info.elements(xsd_info.type_name(pkg, el, info)):
         if element.min_occurs == 0 or pkg.child(el, element.name) is not None:
+            continue
+        if element.name in CONTAINERS:
+            child = pkg.create_child(el, element.name, with_id=True)
+            fill_required(pkg, child)
             continue
         if element.name in schema.STRUCTURAL_TAGS:
             continue
@@ -367,9 +401,19 @@ def mass_edit_kinds(pkg: SipPackage, el) -> list[str]:
     return [k for k in MASS_EDIT_KINDS if _objects_below(pkg, el, k)]
 
 
-def mass_edit_fields(kind: str) -> list[dict]:
-    return [{"tag": d.tag, "label": d.label, "type": d.type} for d in schema.field_defs(kind)
-            if d.type in (schema.TEXT, schema.MULTILINE, schema.TIME_SPAN) and not d.required]
+def mass_edit_fields(kind: str, pkg: SipPackage | None = None) -> list[dict]:
+    fields = [{"tag": definition.tag, "label": definition.label, "type": definition.type}
+              for definition in schema.field_defs(kind)
+              if definition.type in (schema.TEXT, schema.MULTILINE, schema.TIME_SPAN) and not definition.required]
+    if pkg is None:
+        return fields
+    info = xsd_info.for_package(pkg)
+    sample = next(pkg.iter_kind(kind), None)
+    if sample is None:
+        return []
+    type_name = xsd_info.type_name(pkg, sample, info)
+    return [field for field in fields if (definition := info.element(type_name, field["tag"])) is not None
+            and definition.max_occurs == 1]
 
 
 def mass_edit(pkg: SipPackage, el, kind: str, tag: str, value: str, end: str = "") -> int:
@@ -378,6 +422,11 @@ def mass_edit(pkg: SipPackage, el, kind: str, tag: str, value: str, end: str = "
     if definition is None:
         raise StructureError("Dieses Metadatum kann nicht mehrfach editiert werden.")
     targets = _objects_below(pkg, el, kind)
+    info = xsd_info.for_package(pkg)
+    for target in targets:
+        element_info = info.element(xsd_info.type_name(pkg, target, info), tag)
+        if element_info is not None and element_info.max_occurs != 1:
+            raise StructureError("Repeated values must be edited as lists, not by scalar bulk edit.")
     for target in targets:
         if definition.type == schema.TIME_SPAN:
             pkg.set_time_span(target, tag, value, end)

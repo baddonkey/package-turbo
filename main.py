@@ -16,27 +16,11 @@ APP_VERSION = "0.1.0"
 
 
 def _manual_paths() -> list[Path]:
-    return sorted(BASE_DIR.glob("*Benutzerdokumentation*.pdf")) + sorted((BASE_DIR / "docs").glob("*.pdf")) \
-        + [BASE_DIR / "docs" / "package_handler.md"]
+    return [BASE_DIR / "docs" / "user-guide" / "Benutzerdokumentation.md"]
 
 
-def main() -> int:
-    QQuickStyle.setStyle("Fusion")
-
-    app = QGuiApplication(sys.argv)
-    app.setApplicationName(APP_NAME)
-    app.setApplicationVersion(APP_VERSION)
-    app.setOrganizationName("package-turbo")
-    app.setWindowIcon(QIcon(str(BASE_DIR / "App" / "icons" / "app.svg")))
-
-    settings = QSettings()
-    backend = Backend(settings)
-
-    translator = QTranslator(app)
-    if backend.language == "fr" and translator.load(str(BASE_DIR / "App" / "i18n" / "package_turbo_fr.qm")):
-        app.installTranslator(translator)
-        QLocale.setDefault(QLocale(QLocale.Language.French, QLocale.Country.Switzerland))
-
+def create_engine(backend: Backend) -> QQmlApplicationEngine:
+    backend._software_version = APP_VERSION
     controllers = {
         "structure": StructureController(backend),
         "fileOps": FileController(backend),
@@ -51,13 +35,32 @@ def main() -> int:
     context.setContextProperty("backend", backend)
     context.setContextProperty("editor", backend.editor)
     for name in ("classificationModel", "dossierModel", "packageModel", "validationTable", "changesTable",
-                 "searchTable", "notesTable", "sampleTable"):
+                 "searchTable", "notesTable", "sampleTable", "historyTable"):
         context.setContextProperty(name, getattr(backend, name))
     for name, controller in controllers.items():
         context.setContextProperty(name, controller)
     context.setContextProperty("appVersion", APP_VERSION)
 
     engine.loadFromModule("App", "Main")
+    return engine
+
+
+def main() -> int:
+    QQuickStyle.setStyle("Fusion")
+
+    app = QGuiApplication(sys.argv)
+    app.setApplicationName(APP_NAME)
+    app.setApplicationVersion(APP_VERSION)
+    app.setOrganizationName("package-turbo")
+    app.setWindowIcon(QIcon(str(BASE_DIR / "App" / "icons" / "app.svg")))
+
+    backend = Backend(QSettings())
+    translator = QTranslator(app)
+    if backend.language == "fr" and translator.load(str(BASE_DIR / "App" / "i18n" / "package_turbo_fr.qm")):
+        app.installTranslator(translator)
+        QLocale.setDefault(QLocale(QLocale.Language.French, QLocale.Country.Switzerland))
+
+    engine = create_engine(backend)
     if not engine.rootObjects():
         return -1
 

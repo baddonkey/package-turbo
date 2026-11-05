@@ -16,3 +16,7 @@ MassAssignDialog 254.0 MassAssignDialog.qml
 MassEditDialog 254.0 MassEditDialog.qml
 PreferencesDialog 254.0 PreferencesDialog.qml
 AdditionalDataEditor 254.0 AdditionalDataEditor.qml
+HistoryView 254.0 HistoryView.qml
+StorageCleanupDialog 254.0 StorageCleanupDialog.qml
+RepeatedTextEditor 254.0 RepeatedTextEditor.qml
+ReferenceAttributesEditor 254.0 ReferenceAttributesEditor.qml

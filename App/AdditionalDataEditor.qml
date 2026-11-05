@@ -16,7 +16,13 @@ ColumnLayout {
     onItemsChanged: rows = items.map(i => ({ name: i.name, value: i.value }))
 
     function commit() {
-        editor.setAdditionalData(elementKey, rows.filter(r => r.name.trim() || r.value.trim()))
+        const key = elementKey
+        const token = editor.packageToken
+        const values = rows.filter(row => row.name.trim() || row.value.trim()).map(row => ({ name: row.name, value: row.value }))
+        Qt.callLater(() => {
+            if (editor.packageToken === token)
+                editor.setAdditionalData(key, values)
+        })
     }
 
     RowLayout {

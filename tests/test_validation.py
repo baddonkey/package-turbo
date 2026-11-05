@@ -15,6 +15,9 @@ def test_continuous_checks_on_synthetic_sip(sip_dir):
 
 
 def test_full_validation_detects_file_system_mismatch(sip_dir):
+    baseline = Validator(SipPackage.open_folder(sip_dir)).run(full=True)
+    assert not _checks(baseline) & {"checksum", "missing_file", "surplus_file"}
+
     (sip_dir / "content" / "d0001" / "p000001.pdf").write_bytes(b"changed")
     (sip_dir / "content" / "d0001" / "surplus.pdf").write_bytes(b"x")
     (sip_dir / "content" / "d0001" / "p000002.txt").unlink()
@@ -25,11 +28,89 @@ def test_full_validation_detects_file_system_mismatch(sip_dir):
             "validity_failed"} <= found
 
 
+def test_missing_checksum_is_reported(sip_dir):
+    pkg = SipPackage.open_folder(sip_dir)
+    file_element = pkg.file_by_id("_file1")
+    assert not [issue for issue in Validator(pkg).run(full=True) if issue["checkId"] == "checksum"]
+    pkg.set_text(file_element, "pruefsumme", "")
+
+    issues = Validator(pkg).run(full=True)
+
+    assert any(issue["checkId"] == "checksum" and issue["fieldTag"] == "pruefsumme" for issue in issues)
+
+
 def test_sip_name_check_can_be_disabled(sip_dir):
     renamed = sip_dir.rename(sip_dir.with_name("not_a_sip_name"))
     pkg = SipPackage.open_folder(renamed)
     assert "sip_name" in _checks(Validator(pkg).run(full=True))
     assert "sip_name" not in _checks(Validator(pkg, validate_sip_name=False).run(full=True))
+
+
+def test_unsupported_checksum_is_reported_not_silently_md5(sip_dir):
+    import pytest
+    from ph_backend.sip import UnsupportedChecksumError, file_checksum
+
+    pkg = SipPackage.open_folder(sip_dir)
+    file_el = pkg.file_by_id("_file1")
+    pkg.set_text(file_el, "pruefalgorithmus", "UNKNOWN", required=True)
+    with pytest.raises(UnsupportedChecksumError):
+        file_checksum(pkg.fs_path(file_el), "UNKNOWN")
+    issues = Validator(pkg).run(full=True)
+    assert any(issue["checkId"] == "checksum" and issue["fieldTag"] == "pruefalgorithmus" for issue in issues)
+
+
+def test_dangling_datei_ref_is_reported(tmp_path):
+    from ph_backend import files, package_factory, structure
+
+    pkg = package_factory.create_package(tmp_path, "SIP_20261105_Test_DanglingRef", "Test",
+                                         version="1.0", delivery_type="FILES")
+    content = next(element for element in pkg.iter_kind("ordner") if pkg.text(element, "name") == "content")
+    source = tmp_path / "reference.txt"
+    source.write_text("reference", encoding="utf-8")
+    files.import_paths(pkg, content, [source])
+    file_element = next(element for element in pkg.children(content, "datei"))
+    dossier = structure.add_objects(pkg, next(pkg.iter_kind("ordnungssystemposition")), "dossier")[0]
+    document = structure.add_objects(pkg, dossier, "dokument")[0]
+    structure.assign_files(pkg, document, [file_element])
+    pkg.children(document, "dateiRef")[0].text = "_missing_file"
+
+    issues = Validator(pkg).run(full=True)
+
+    assert any(issue["checkId"] == "invalid_reference" and issue["value"] == "_missing_file"
+               for issue in issues)
+
+
+def test_required_metadata_fields_follow_release_and_profile_dictionary(tmp_path):
+    from ph_backend import package_factory
+
+    pkg = package_factory.create_package(tmp_path, "SIP_20261105_Test_RequiredFields", "Test",
+                                         version="1.0", delivery_type="FILES")
+    provenance = pkg.provenance
+    pkg.set_text(provenance, "systemName", "Source system")
+    pkg.set_text(provenance, "systemBeschreibung", "Source description")
+    pkg.child(provenance, "systemName").text = ""
+    pkg.child(provenance, "systemBeschreibung").text = ""
+
+    issues = Validator(pkg).run(full=False)
+
+    missing = {issue["fieldTag"] for issue in issues if issue["checkId"] == "missing_values"}
+    assert {"systemName", "systemBeschreibung"} <= missing
+
+
+def test_optional_metadata_fields_may_be_absent(tmp_path):
+    from ph_backend import package_factory
+
+    pkg = package_factory.create_package(tmp_path, "SIP_20261105_Test_OptionalFields", "Test",
+                                         version="1.3", delivery_type="FILES")
+    for tag in ("ablieferungsnummer", "schutzfristenkategorie", "schutzfrist"):
+        element = pkg.child(pkg.delivery, tag)
+        if element is not None:
+            pkg.delivery.remove(element)
+
+    issues = Validator(pkg).run(full=False)
+
+    missing = {issue["fieldTag"] for issue in issues if issue["checkId"] == "missing_values"}
+    assert not missing & {"ablieferungsnummer", "schutzfristenkategorie", "schutzfrist"}
 
 
 def test_time_span_checks(sip_dir):
@@ -40,6 +121,24 @@ def test_time_span_checks(sip_dir):
     assert "invalid_time_span" in _checks(issues)
     pkg.set_time_span(dossier, "entstehungszeitraum", "2001", "2003")
     assert "time_span_hierarchy" in _checks(Validator(pkg).run(full=False))
+
+
+def test_estimated_dossier_period_requires_reason(tmp_path):
+    from ph_backend import package_factory, structure
+
+    pkg = package_factory.create_package(tmp_path, "SIP_20261106_Test_EstimatedPeriod", "Test",
+                                         version="1.3", delivery_type="GEVER")
+    dossier = structure.add_objects(pkg, next(pkg.iter_kind("ordnungssystemposition")), "dossier")[0]
+    pkg.set_time_span(dossier, "entstehungszeitraum", "ca. 2000", "2001")
+
+    issues = Validator(pkg).run(full=False)
+    assert any(issue["checkId"] == "missing_values" and issue["fieldTag"] == "entstehungszeitraumAnmerkung"
+               for issue in issues)
+
+    pkg.set_text(dossier, "entstehungszeitraumAnmerkung", "Date estimated from incomplete records")
+    issues = Validator(pkg).run(full=False)
+    assert not any(issue["checkId"] == "missing_values" and issue["fieldTag"] == "entstehungszeitraumAnmerkung"
+                   for issue in issues)
 
 
 def test_protection_period_inconsistency(sip_dir):

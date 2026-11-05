@@ -18,6 +18,7 @@ SAMPLES = [
     "SIP_20120628_eCH1.0F_BfB",
     "SIP_20220328_KOST_eCH1.2G_1a-3d-IO",
     "SIP_20220328_KOST_eCH1.2F_1a-3d-IO",
+    "SIP_20260421_KOST_eCH1.3F_1a-3d-IO",
 ]
 
 
@@ -32,8 +33,12 @@ def test_sample_versions(name):
     if not folder.is_dir():
         pytest.skip(f"{name} not available in samples/")
     pkg = SipPackage.open_folder(folder, read_only=True)
-    found = {i["checkId"] for i in Validator(pkg).run(full=True)}
+    issues = Validator(pkg).run(full=True)
+    found = {i["checkId"] for i in issues}
     assert not found & {"schema", "checksum", "missing_file", "surplus_file", "wrong_file"}
+    if pkg.root.get("schemaVersion") in {"5.0", "5.1"}:
+        assert not any(i["checkId"] == "missing_values" and i["fieldTag"] == "entstehungszeitraum"
+                       for i in issues)
     for build in (navigators.build_classification_tree, navigators.build_dossier_tree, navigators.build_package_tree):
         model = navigators.NavigatorModel(["x"])
         build(model, pkg)

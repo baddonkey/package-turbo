@@ -5,26 +5,28 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "package-turbo"
 version = "0.1.0"
-description = "Package Turbo - re-implementation of the BAR Package Handler (eCH-0160 SIP) with PySide6 and QML."
+description = "Package Turbo - desktop workspace for eCH-0160 Submission Information Packages with PySide6 and QML."
 requires-python = ">=3.11"
 dependencies = [
     "PySide6>=6.9",
     "lxml>=5.0",
+    "rfc8785>=0.1,<1",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "openpyxl>=3.1"]
 
 [project.scripts]
 package-turbo = "main:main"
 
 [tool.setuptools]
 py-modules = ["main"]
-packages = ["ph_backend", "App"]
+packages = ["ph_backend", "App", "docs"]
 
 [tool.setuptools.package-data]
 App = ["*.qml", "qmldir", "icons/*.svg", "i18n/*.qm"]
-ph_backend = ["resources/xsd/*.xsd"]
+ph_backend = ["resources/*.csv", "resources/xsd/*.xsd", "resources/xsd/*/*.xsd", "resources/preservation/*.xsd"]
+docs = ["user-guide/*.md", "user-guide/img/*.png"]
 
 [tool.pyside6-project]
 files = [
@@ -47,12 +49,24 @@ files = [
     "App/MassEditDialog.qml",
     "App/PreferencesDialog.qml",
     "App/AdditionalDataEditor.qml",
+    "App/HistoryView.qml",
+    "App/StorageCleanupDialog.qml",
+    "App/RepeatedTextEditor.qml",
+    "App/ReferenceAttributesEditor.qml",
     "App/i18n/package_turbo_fr.ts",
     "ph_backend/__init__.py",
+    "ph_backend/audit.py",
+    "ph_backend/workspace.py",
+    "ph_backend/file_workspace.py",
+    "ph_backend/undo.py",
+    "ph_backend/retention.py",
+    "ph_backend/processing.py",
+    "ph_backend/qt_processing.py",
     "ph_backend/schema.py",
     "ph_backend/timespan.py",
     "ph_backend/file_formats.py",
     "ph_backend/xsd_info.py",
+    "ph_backend/metadata_requirements.py",
     "ph_backend/sip.py",
     "ph_backend/files.py",
     "ph_backend/structure.py",
@@ -77,7 +91,7 @@ input_file = "main.py"
 exec_directory = "dist"
 icon = "App/icons/app.ico"
 mode = "standalone"
-extra_args = "--windows-console-mode=disable --include-data-dir=ph_backend/resources=ph_backend/resources --include-data-dir=App=App"
+extra_args = "--windows-console-mode=disable --include-data-dir=ph_backend/resources=ph_backend/resources --include-data-dir=App=App --include-data-dir=docs/user-guide=docs/user-guide"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
