@@ -1,5 +1,6 @@
 """Regression tests with the public KOST-CECO eCH-0160 test packages (downloaded to samples/, skipped otherwise)."""
 
+import os
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ from ph_backend.sip import SipPackage
 from ph_backend.validation import Validator
 
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples"
+REQUIRED_KOST_SAMPLE = "SIP_20260421_KOST_eCH1.3F_1a-3d-IO"
 
 SAMPLES = [
     "SIP_20070923_eCH1.0G_RIS",
@@ -22,6 +24,14 @@ SAMPLES = [
 ]
 
 
+def _sample_folder(name, folder):
+    if folder.is_dir():
+        return folder
+    if name == REQUIRED_KOST_SAMPLE and os.environ.get("PACKAGE_TURBO_REQUIRE_KOST_FIXTURE") == "1":
+        raise FileNotFoundError(f"Required conformance fixture is missing: {folder}")
+    pytest.skip(f"{name} not available in samples/")
+
+
 @pytest.fixture(scope="module", autouse=True)
 def app():
     return QGuiApplication.instance() or QGuiApplication(["test", "-platform", "offscreen"])
@@ -29,9 +39,7 @@ def app():
 
 @pytest.mark.parametrize("name", SAMPLES)
 def test_sample_versions(name):
-    folder = SAMPLES_DIR / name
-    if not folder.is_dir():
-        pytest.skip(f"{name} not available in samples/")
+    folder = _sample_folder(name, SAMPLES_DIR / name)
     pkg = SipPackage.open_folder(folder, read_only=True)
     issues = Validator(pkg).run(full=True)
     found = {i["checkId"] for i in issues}
@@ -48,3 +56,9 @@ def test_sample_versions(name):
     editor.showElement(pkg.key(next(pkg.iter_kind("dossier"))))
     assert editor.sections and editor.sections[0]["primary"]
     assert statistics.time_span_comparison(pkg)["bars"]
+
+
+def test_conformance_mode_requires_v13_kost_fixture(monkeypatch, tmp_path):
+    monkeypatch.setenv("PACKAGE_TURBO_REQUIRE_KOST_FIXTURE", "1")
+    with pytest.raises(FileNotFoundError, match=REQUIRED_KOST_SAMPLE):
+        _sample_folder(REQUIRED_KOST_SAMPLE, tmp_path / REQUIRED_KOST_SAMPLE)

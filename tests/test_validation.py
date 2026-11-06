@@ -1,3 +1,5 @@
+import pytest
+
 from ph_backend import file_formats
 from ph_backend.sip import SipPackage
 from ph_backend.validation import CHECKS, ERROR, WARNING, Validator, summarize
@@ -80,21 +82,58 @@ def test_dangling_datei_ref_is_reported(tmp_path):
                for issue in issues)
 
 
-def test_required_metadata_fields_follow_release_and_profile_dictionary(tmp_path):
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+@pytest.mark.parametrize("delivery_type", ["GEVER", "FILES"])
+def test_mandatory_metadata_is_reported_after_sip_save_and_reopen(tmp_path, version, delivery_type):
+    from ph_backend import package_factory, structure
+    from ph_backend.sip import SipPackage
+
+    pkg = package_factory.create_package(tmp_path, f"SIP_20261106_Test_Required_{version}_{delivery_type}", "Test",
+                                         version=version, delivery_type=delivery_type)
+    position = next(pkg.iter_kind("ordnungssystemposition"))
+    structure.add_objects(pkg, position, "dossier")
+    required_fields = (("ablieferung", "ablieferndeStelle"), ("dossier", "titel"))
+
+    for kind, field in required_fields:
+        owner = pkg.delivery if kind == "ablieferung" else next(pkg.iter_kind("dossier"))
+        pkg.set_text(owner, field, "")
+        pkg.save()
+        pkg = SipPackage.open_folder(pkg.root_dir)
+        issues = Validator(pkg).run(full=True)
+        assert any(issue["checkId"] == "missing_values" and issue["fieldTag"] == field for issue in issues), (
+            version, delivery_type, field)
+
+        reopened_owner = pkg.delivery if kind == "ablieferung" else next(pkg.iter_kind("dossier"))
+        pkg.set_text(reopened_owner, field, "Restored required value", required=True)
+        pkg.save()
+        pkg = SipPackage.open_folder(pkg.root_dir)
+        issues = Validator(pkg).run(full=True)
+        assert not any(issue["checkId"] == "missing_values" and issue["fieldTag"] == field for issue in issues), (
+            version, delivery_type, field)
+        assert not any(issue["checkId"] == "schema" for issue in issues), (version, delivery_type, field)
+
+
+@pytest.mark.parametrize("version", ["1.0", "1.1"])
+def test_legacy_files_provenance_fields_roundtrip(tmp_path, version):
     from ph_backend import package_factory
+    from ph_backend.sip import SipPackage
 
-    pkg = package_factory.create_package(tmp_path, "SIP_20261105_Test_RequiredFields", "Test",
-                                         version="1.0", delivery_type="FILES")
-    provenance = pkg.provenance
-    pkg.set_text(provenance, "systemName", "Source system")
-    pkg.set_text(provenance, "systemBeschreibung", "Source description")
-    pkg.child(provenance, "systemName").text = ""
-    pkg.child(provenance, "systemBeschreibung").text = ""
+    pkg = package_factory.create_package(tmp_path, f"SIP_20261106_Test_LegacyFiles_{version}", "Test",
+                                         version=version, delivery_type="FILES")
+    for field, value in (("systemName", "Source system"), ("systemBeschreibung", "Source description")):
+        pkg.set_text(pkg.provenance, field, value, required=True)
+        pkg.save()
+        pkg = SipPackage.open_folder(pkg.root_dir)
+        issues = Validator(pkg).run(full=True)
+        assert not any(issue["checkId"] == "missing_values" and issue["fieldTag"] == field
+                   for issue in issues), (version, field)
+        assert not any(issue["checkId"] == "schema" for issue in issues), (version, field)
 
-    issues = Validator(pkg).run(full=False)
-
-    missing = {issue["fieldTag"] for issue in issues if issue["checkId"] == "missing_values"}
-    assert {"systemName", "systemBeschreibung"} <= missing
+        pkg.set_text(pkg.provenance, field, "")
+        pkg.save()
+        pkg = SipPackage.open_folder(pkg.root_dir)
+        assert any(issue["checkId"] == "missing_values" and issue["fieldTag"] == field
+                   for issue in Validator(pkg).run(full=True)), (version, field)
 
 
 def test_optional_metadata_fields_may_be_absent(tmp_path):
@@ -125,6 +164,7 @@ def test_time_span_checks(sip_dir):
 
 def test_estimated_dossier_period_requires_reason(tmp_path):
     from ph_backend import package_factory, structure
+    from ph_backend.sip import SipPackage
 
     pkg = package_factory.create_package(tmp_path, "SIP_20261106_Test_EstimatedPeriod", "Test",
                                          version="1.3", delivery_type="GEVER")
@@ -134,8 +174,15 @@ def test_estimated_dossier_period_requires_reason(tmp_path):
     issues = Validator(pkg).run(full=False)
     assert any(issue["checkId"] == "missing_values" and issue["fieldTag"] == "entstehungszeitraumAnmerkung"
                for issue in issues)
+    pkg.save()
+    pkg = SipPackage.open_folder(pkg.root_dir)
+    assert any(issue["checkId"] == "missing_values" and issue["fieldTag"] == "entstehungszeitraumAnmerkung"
+               for issue in Validator(pkg).run(full=False))
 
+    dossier = next(pkg.iter_kind("dossier"))
     pkg.set_text(dossier, "entstehungszeitraumAnmerkung", "Date estimated from incomplete records")
+    pkg.save()
+    pkg = SipPackage.open_folder(pkg.root_dir)
     issues = Validator(pkg).run(full=False)
     assert not any(issue["checkId"] == "missing_values" and issue["fieldTag"] == "entstehungszeitraumAnmerkung"
                    for issue in issues)

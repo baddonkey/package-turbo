@@ -295,7 +295,7 @@ it does not encode the PDF's prose rules, data-dictionary semantics, archive-spe
 full per-value negative cases, or guarantee that conditional sample fixtures were present during
 a particular CI run. Empty/unknown coverage is a request for review, not an unsupported-pass claim.
 
-Verification: 252 tests pass. Tests include all eight version/delivery combinations for authors
+Verification: 262 tests pass. Tests include all eight version/delivery combinations for authors
 and reference attributes, structured process roundtrips, legacy and FILES restrictions, list
 identity preservation, native field editing, focused Save and audited Undo/Redo.
 The deterministic XSD inventory generator compiles every bundled schema set and is tested for
@@ -315,8 +315,9 @@ requirements from the v1.3.0 specification, with clause page, MUST/SHOULD level,
 short summary, candidate code surface and test-evidence field. The `in_1_*` columns indicate
 only whether an identifier occurs in each older PDF: they do not prove that the clause text or
 meaning stayed unchanged. The example ID in the specification's notation section is excluded.
-Two rows are partially verified: M_4.5-1 has exhaustive synthetic mandatory-field presence
-coverage and M_4.10-1 has a tested dossier-estimation rule. The other 58 remain `not-assessed`;
+Two rows are partially verified: M_4.5-1 has exhaustive synthetic presence coverage plus real SIP
+save/reopen cases for required delivery/dossier fields across all eight release/profile combinations
+and legacy FILES provenance; M_4.10-1 has a tested dossier-estimation rule. The other 58 remain `not-assessed`;
 candidate code paths and sample smoke tests are not clause-conformance evidence.
 
 The [data-dictionary matrix](ech0160-data-dictionary.csv) contains 969 profile-specific rows
@@ -333,6 +334,9 @@ all field semantics. Complex value internals remain subject to XSD validation. M
 distinguish this presence evidence from pending field-specific semantic/XSD conformance; K-level
 rows remain `not-assessed`. The editor also marks dictionary-required fields and conditionally
 marks the dossier estimation note when a period endpoint is approximate.
+Real-package tests additionally remove, validate, save, reopen, restore and revalidate required
+delivery and dossier fields in all eight version/profile combinations, and round-trip the legacy
+FILES `systemName` and `systemBeschreibung` fields for versions 1.0 and 1.1.
 The local legacy 1.0 FILES fixture omits `systemName` and `systemBeschreibung`, both marked M
 by that release's data dictionary; validation now reports these omissions instead of silently
 waiving the requirements.
@@ -349,8 +353,13 @@ python tools/data_dictionary_matrix.py `
 The [KOST test-package page](https://kost-ceco.ch/cms/ech-0160-archivische-ablieferungsschnittstelle.html)
 lists a 2026-04-21 eCH-0160 v1.3 FILES package. The package was checked against the bundled v1.3
 XSD and passed the application's sample smoke workflow. It remains in the ignored local `samples/`
-directory; it is not redistributed by this repository. A checkout without the package skips that
-parameter, so conformance CI still needs an explicit, license-reviewed fixture provisioning step.
+directory; it is not redistributed by this repository. Local test runs skip the fixture when it is
+absent. The Windows [CI workflow](../.github/workflows/tests.yml) downloads it transiently from
+the official KOST page, verifies SHA-256
+`dc4474a3cfe654f7e459cd594cd43d91f7e563b98c39e809417e6778ba023c65`, and sets
+`PACKAGE_TURBO_REQUIRE_KOST_FIXTURE=1` so absence is fatal. The ZIP is not committed or attached
+as a workflow artifact. The maintainer confirms this project use is non-commercial; review terms
+again before redistribution or any commercial use.
 
 Validation now permits omission of optional delivery-number/protection-period fields and enforces
 dictionary-mandatory metadata across versions. It also checks that every dateiRef ID resolves to
@@ -400,9 +409,8 @@ complete language catalogues and native artifact qualification.
 - Separate eCH rules from receiving-archive policies, including size/path/format limits.
 - Migrate only an explicit copy, preview changes/losses, validate the result and audit its
   derivation. Reject unrepresentable downgrades rather than silently dropping information.
-- Require fixture availability in conformance CI instead of silently skipping missing data.
-  Provision the 2026 KOST v1.3 FILES fixture and schema-derived GEVER/feature-edge fixtures
-  under reviewed redistribution terms.
+- Keep the v1.3 FILES conformance fixture fail-closed in CI; add schema-derived GEVER/feature-edge
+  fixtures under reviewed redistribution terms.
 
 ### 3. Recoverable Transactions And Audit Integration
 
