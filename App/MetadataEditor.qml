@@ -5,6 +5,18 @@ import QtQuick.Layouts
 // Metadata editor with one tab per object type (Überblick, Statistik, Validierung, Dossier, ...).
 Pane {
     id: root
+    property var expandedSections: ({})
+    property int expansionToken: -1
+
+    Connections {
+        target: editor
+        function onContentChanged() {
+            if (root.expansionToken !== editor.packageToken) {
+                root.expansionToken = editor.packageToken
+                root.expandedSections = ({})
+            }
+        }
+    }
 
     signal newNoteRequested(int key)
     signal showNotesRequested(int key)
@@ -24,6 +36,21 @@ Pane {
         Layout.fillWidth: true
         spacing: 8
 
+        function commitText(value) {
+            const key = elementKey
+            const tag = field.tag
+            const type = field.type
+            const token = editor.packageToken
+            Qt.callLater(() => {
+                if (editor.packageToken !== token)
+                    return
+                if (type === "timepoint")
+                    editor.setTimePoint(key, tag, value)
+                else
+                    editor.setField(key, tag, value)
+            })
+        }
+
         Label {
             Layout.preferredWidth: 230
             Layout.alignment: Qt.AlignTop
@@ -39,15 +66,26 @@ Pane {
 
         Loader {
             Layout.fillWidth: true
-            sourceComponent: fieldRow.field.type === "timespan" ? timeSpanEditor
+            sourceComponent: fieldRow.field.type === "repeated" ? repeatedEditor
+                           : fieldRow.field.type === "timespan" ? timeSpanEditor
                            : fieldRow.field.type === "multiline" ? multilineEditor
                            : fieldRow.field.type === "choice" ? choiceEditor
                            : textEditor
         }
 
         Component {
+            id: repeatedEditor
+            RepeatedTextEditor {
+                elementKey: fieldRow.elementKey
+                field: fieldRow.field
+                editable: fieldRow.editable
+            }
+        }
+
+        Component {
             id: textEditor
             TextField {
+                objectName: "metadataField-" + fieldRow.field.tag
                 text: fieldRow.field.value
                 readOnly: !fieldRow.editable
                 selectByMouse: true
@@ -60,10 +98,7 @@ Pane {
                 onEditingFinished: {
                     if (!fieldRow.editable || text === fieldRow.field.value)
                         return
-                    if (fieldRow.field.type === "timepoint")
-                        editor.setTimePoint(fieldRow.elementKey, fieldRow.field.tag, text)
-                    else
-                        editor.setField(fieldRow.elementKey, fieldRow.field.tag, text)
+                    fieldRow.commitText(text)
                 }
                 ContextMenu.menu: EditMenu { target: parent }
             }
@@ -78,7 +113,7 @@ Pane {
                 displayText: currentText === "" ? qsTr("(keine Auswahl)") : currentText
                 onActivated: function (index) {
                     if (fieldRow.field.choices[index] !== fieldRow.field.value)
-                        editor.setField(fieldRow.elementKey, fieldRow.field.tag, fieldRow.field.choices[index])
+                        fieldRow.commitText(fieldRow.field.choices[index])
                 }
             }
         }
@@ -88,12 +123,13 @@ Pane {
             ScrollView {
                 implicitHeight: 64
                 TextArea {
+                    objectName: "metadataField-" + fieldRow.field.tag
                     text: fieldRow.field.value
                     readOnly: !fieldRow.editable
                     wrapMode: TextEdit.Wrap
                     selectByMouse: true
                     onEditingFinished: if (fieldRow.editable && text !== fieldRow.field.value)
-                                           editor.setField(fieldRow.elementKey, fieldRow.field.tag, text)
+                                           fieldRow.commitText(text)
                     ContextMenu.menu: EditMenu { target: parent }
                 }
             }
@@ -103,8 +139,17 @@ Pane {
             id: timeSpanEditor
             RowLayout {
                 function commit() {
-                    if (fieldRow.editable && (startField.text !== fieldRow.field.start || endField.text !== fieldRow.field.end))
-                        editor.setTimeSpan(fieldRow.elementKey, fieldRow.field.tag, startField.text, endField.text)
+                    if (fieldRow.editable && (startField.text !== fieldRow.field.start || endField.text !== fieldRow.field.end)) {
+                        const key = fieldRow.elementKey
+                        const tag = fieldRow.field.tag
+                        const start = startField.text
+                        const end = endField.text
+                        const token = editor.packageToken
+                        Qt.callLater(() => {
+                            if (editor.packageToken === token)
+                                editor.setTimeSpan(key, tag, start, end)
+                        })
+                    }
                 }
                 Label { text: qsTr("von") }
                 TextField {
@@ -286,9 +331,19 @@ Pane {
 
                             Button {
                                 id: moreToggle
+                                objectName: "moreFields-" + section.modelData.key
                                 visible: section.modelData.more.length > 0
                                 flat: true
                                 checkable: true
+                                checked: root.expandedSections[editor.packageToken + ":" + section.modelData.key] === true
+                                onCheckedChanged: {
+                                    const key = editor.packageToken + ":" + section.modelData.key
+                                    if (root.expandedSections[key] !== checked) {
+                                        const values = Object.assign({}, root.expandedSections)
+                                        values[key] = checked
+                                        root.expandedSections = values
+                                    }
+                                }
                                 text: (checked ? "\u2212 " : "+ ") + qsTr("Weitere Angaben")
                             }
 
@@ -306,6 +361,13 @@ Pane {
                                 visible: section.modelData.canHaveAdditionalData || section.modelData.additionalData.length > 0
                                 elementKey: section.modelData.key
                                 items: section.modelData.additionalData
+                                editable: !editor.readOnly && !section.modelData.readOnly
+                            }
+                            ReferenceAttributesEditor {
+                                Layout.fillWidth: true
+                                visible: section.modelData.references.length > 0
+                                elementKey: section.modelData.key
+                                references: section.modelData.references
                                 editable: !editor.readOnly && !section.modelData.readOnly
                             }
                         }

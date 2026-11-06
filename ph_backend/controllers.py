@@ -6,12 +6,13 @@ from pathlib import Path
 from PySide6.QtCore import Property, QObject, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices
 
-from . import files, fixes, notes, package_factory, reports, sampling, schema, search, structure, timespan
+from . import files, fixes, notes, package_factory, reports, sampling, schema, search, structure, timespan, xsd_info
 from .backend import SIMPLE_SEARCH_COLUMNS, Backend
-from .sip import localname
+from .sip import UnsupportedChecksumError, localname
+from .audit import AuditError
 
 _ERRORS = (structure.StructureError, files.FileOperationError, notes.NoteError, timespan.DateFormatError,
-           package_factory.PackageCreationError, OSError)
+           package_factory.PackageCreationError, UnsupportedChecksumError, OSError)
 
 
 def _keys(values) -> list[int]:
@@ -25,12 +26,12 @@ class _Controller(QObject):
 
     def _run(self, title: str, action, *, writable: bool = True):
         """Runs action(pkg) and reports domain errors to the user; returns the action's result or None."""
-        pkg = self.backend.require_writable() if writable else self.backend.package
+        pkg = self.backend.package
         if pkg is None:
             return None
         try:
-            return action(pkg)
-        except _ERRORS as exc:
+            return self.backend.stage_file_operation(action) if writable else action(pkg)
+        except (*_ERRORS, AuditError) as exc:
             self.backend.message.emit(title, str(exc))
             return None
 
@@ -54,17 +55,7 @@ class StructureController(_Controller):
         el = pkg.element(key) if pkg else None
         if el is None or pkg.read_only:
             return []
-        kind = pkg.kind(el)
-        result = []
-        for tag, parents in structure.CONTAINERS.items():
-            if kind not in parents:
-                continue
-            if tag == "ordnungssystemposition" and pkg.children(el, "dossier"):
-                continue
-            if tag == "dossier" and kind == "ordnungssystemposition" and pkg.children(el, "ordnungssystemposition"):
-                continue
-            result.append(tag)
-        return result
+        return structure.allowed_children(pkg, el)
 
     @Slot(int, str, int, result=int)
     def addObjects(self, parent_key: int, tag: str, count: int) -> int:
@@ -197,7 +188,7 @@ class StructureController(_Controller):
 
     @Slot(str, result="QVariantList")
     def massEditFields(self, kind: str) -> list:
-        return structure.mass_edit_fields(kind)
+        return structure.mass_edit_fields(kind, self.backend.package)
 
     @Slot(int, str, str, str, str)
     def massEdit(self, key: int, kind: str, tag: str, value: str, end: str) -> None:
@@ -210,6 +201,15 @@ class StructureController(_Controller):
 
 class FileController(_Controller):
     """Paket-Navigator file operations, normalization and Validierungshilfe fix-ups."""
+
+    def _run(self, title: str, action, *, writable: bool = True):
+        if not writable:
+            return super()._run(title, action, writable=False)
+        try:
+            return self.backend.stage_file_operation(action)
+        except (*_ERRORS, AuditError) as exc:
+            self.backend.message.emit(title, str(exc))
+            return None
 
     def _folder(self, key: int):
         el = self._elements([key])
@@ -261,11 +261,11 @@ class FileController(_Controller):
         el = self._elements([key])
         if el and self._run("Datei ersetzen", lambda pkg: files.replace_file(pkg, el[0], Path(url.toLocalFile())) or True):
             self.backend.after_change("Datei ersetzt", key, file_system=True)
-            self.backend.message.emit("Datei ersetzen", "Die Datei wurde erfolgreich ersetzt und die Prüfsumme angepasst.")
+            self.backend.message.emit("Datei ersetzen", "Die Ersatzdatei ist in der Arbeitskopie bereit zum Speichern.")
 
     @Slot(QUrl, result="QVariantList")
     def replacementCandidates(self, url: QUrl) -> list:
-        result = self._run("Dateien ersetzen", lambda pkg: files.replacement_candidates(pkg, Path(url.toLocalFile())))
+        result = self._run("Dateien ersetzen", lambda pkg: files.replacement_candidates(pkg, Path(url.toLocalFile())), writable=False)
         pkg = self.backend.package
         return [pkg.relpath(el).as_posix() for el, _ in result or []]
 
@@ -277,7 +277,7 @@ class FileController(_Controller):
         names = self._run("Dateien ersetzen", run)
         if names:
             self.backend.after_change(f"{len(names)} Datei(en) ersetzt", file_system=True)
-            self.backend.message.emit("Dateien ersetzen", "Folgende Dateien wurden ersetzt:\n" + "\n".join(names))
+            self.backend.message.emit("Dateien ersetzen", "Ersatzdateien in der Arbeitskopie:\n" + "\n".join(names))
         elif names is not None:
             self.backend.message.emit("Dateien ersetzen", "Es wurden keine gleichnamigen Dateien gefunden.")
 
@@ -285,9 +285,6 @@ class FileController(_Controller):
     def normalize(self, which: str) -> None:
         action = {"names": files.normalize_names, "paths": files.shorten_paths, "undo": files.denormalize}.get(which)
         if action is None:
-            return
-        if self.backend.dirty:
-            self.backend.message.emit("Normalisierung", "Bitte speichern Sie das Paket vor der Normalisierung.")
             return
         count = self._run("Normalisierung", action)
         if count is not None:
@@ -423,6 +420,11 @@ class PackageController(_Controller):
     def xsdVersion(self) -> str:
         return package_factory.XSD_VERSION_LABEL
 
+    @Property("QVariantList", constant=True)
+    def xsdVersions(self) -> list:
+        return [{"version": version, "label": f"eCH-0160 v{version} (Schema {definition[0]})"}
+                for version, definition in xsd_info.SCHEMA_RELEASES.items()]
+
     @Slot(str, str, result=str)
     def suggestedName(self, office: str, reference: str) -> str:
         return package_factory.suggested_name(office, reference)
@@ -436,16 +438,20 @@ class PackageController(_Controller):
             return str(exc)
 
     @Slot(QUrl, str, str, str, str, str, QUrl, result=bool)
+    @Slot(QUrl, str, str, str, str, str, QUrl, str, result=bool)
     def createPackage(self, folder: QUrl, name: str, office: str, delivery_type: str, creator: str,
-                      system_name: str, csv_url: QUrl) -> bool:
+                      system_name: str, csv_url: QUrl, version: str = xsd_info.LATEST_RELEASE) -> bool:
+        if self.backend.busy:
+            return False
         csv_path = csv_url.toLocalFile() if csv_url.isValid() and csv_url.isLocalFile() else None
         try:
             pkg = package_factory.create_package(folder.toLocalFile(), name.strip(), office, delivery_type, creator,
-                                                 system_name, csv_path, self.backend.validateSipName)
+                                                 system_name, csv_path, self.backend.validateSipName, version)
         except _ERRORS as exc:
             self.backend.message.emit("Neues Paket erstellen", str(exc))
             return False
-        self.backend.set_package(pkg)
+        if not self.backend.set_package(pkg):
+            return False
         self.backend.set_status(f"Paket {pkg.name} erstellt")
         return True
 

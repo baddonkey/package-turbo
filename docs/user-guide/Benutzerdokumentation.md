@@ -1,8 +1,8 @@
 # Package Turbo – Benutzerdokumentation
 
-Package Turbo ist eine Neuimplementierung des Package Handlers (Release 2022) des Schweizerischen Bundesarchivs (BAR) mit Python, PySide6 und QML. Diese Dokumentation folgt im Aufbau der Benutzerdokumentation des Package Handlers (Version 1.9, November 2024). Die Abbildungen stammen aus der aktuellen Implementierung und zeigen das KOST-CECO-Testpaket `SIP_20220328_KOST_eCH1.2G_1a-3d-IO`; sie werden mit `tools/doc_screenshots.py` neu erstellt.
+Package Turbo ist ein eigenständiger Desktop-Arbeitsbereich für digitale Ablieferungen nach eCH-0160 mit Python, PySide6 und QML. Diese Dokumentation beschreibt die Arbeitsabläufe und den aktuellen Funktionsumfang von Package Turbo. Die Abbildungen zeigen das KOST-CECO-Testpaket `SIP_20220328_KOST_eCH1.2G_1a-3d-IO` in Package Turbo und werden mit `tools/doc_screenshots.py` erstellt.
 
-<span style="color:darkred">Texte in dunkelroter Farbe beschreiben Funktionen, die (noch) nicht umgesetzt sind oder sich vom Original-Package-Handler unterscheiden.</span>
+Package Turbo befindet sich in Entwicklung. Verwenden Sie für die Bearbeitung eine Arbeitskopie und bewahren Sie die ursprüngliche Ablieferung unverändert auf.
 
 ## Inhaltsverzeichnis
 
@@ -36,21 +36,27 @@ Package Turbo ist eine Neuimplementierung des Package Handlers (Release 2022) de
 
 Die Benutzerdokumentation beschreibt den Aufbau und die Funktionen von Package Turbo, einer Applikation für die Erstellung, Bearbeitung und Prüfung von digitalen Ablieferungen, die als Informationspakete (Submission Information Package, SIP) an ein Archiv übergeben werden. Sie richtet sich an abliefernde Stellen und an Archivarinnen und Archivare, die digitale Ablieferungen übernehmen und prüfen.
 
-Die Anforderungen des BAR an digitale Ablieferungen sind in der *Spezifikation Submission Information Package (SIP)* beschrieben und werden in diesem Dokument nicht vollständig wiedergegeben.
+Grundlage sind die Spezifikation und die XML-Schemas von eCH-0160. Zusätzlich können die empfangenden Archive eigene Anforderungen an eine Ablieferung stellen; klären Sie diese vor der Übergabe.
 
 ### 1.2 Zweck von Package Turbo
 
 Package Turbo unterstützt die Erstellung, Qualitätsprüfung und Sichtung von digitalen Ablieferungen gemäss dem Standard eCH-0160 – Archivische Ablieferungsschnittstelle. Die Metadaten des Pakets (`header/metadata.xml`) können gesichtet, erstellt und bearbeitet werden; die Primärdaten (Dateien im Ordner `content`) lassen sich direkt öffnen. Zusätzlich stehen Funktionen zur Prüfung der Metadaten, zur Suche, für Notizen und Stichproben zur Verfügung.
 
-Package Turbo öffnet und prüft Pakete der Standardversionen eCH-0160 v1.0, v1.1 und v1.2 (XML-Namensraum `http://bar.admin.ch/arelda/v4`). Die Prüfung erfolgt jeweils gegen die XSD-Dateien, die im Paket im Ordner `header/xsd` mitgeliefert werden. Neue Pakete werden nach eCH-0160 v1.2 (Schema-Version 5.0) erstellt.
+Package Turbo öffnet und prüft Pakete der Standardversionen eCH-0160 v1.0, v1.1, v1.2 und v1.3 (XML-Namensraum `http://bar.admin.ch/arelda/v4`). Die Prüfung erfolgt gegen die im Paket unter `header/xsd` mitgelieferten XML-Schemas. Bei der Erstellung stehen alle vier Versionen zur Auswahl; die Voreinstellung ist v1.3 (Schema-Version 5.1). Das Speichern ändert die Standardversion eines vorhandenen Pakets nicht. Unbekannte Versionen werden schreibgeschützt geöffnet.
 
-<span style="color:darkred">Wie im Original werden die Attribute *version*, *repraesentation*, *information* und *reihung* von `<dateiRef>` nicht angezeigt.</span>
+Die Unterstützung der Paket-Schemas umfasst noch nicht für jedes Metadatum einen vollständigen Editorablauf. Beachten Sie die nachfolgend beschriebenen Einschränkungen.
+
+Die Attribute *version*, *repraesentation*, *information* und *reihung* von `<dateiRef>`
+werden bei eCH-0160 v1.2/v1.3 im Abschnitt *Dateiverweise* des referenzierenden Objekts
+angezeigt und bearbeitet. In v1.0/v1.1 sind diese Attribute nicht deklariert und werden
+nicht zur Erfassung angeboten. Die Bearbeitung verändert weder die Dateizuordnung noch
+den Dateiinhalt; vorhandene unbekannte Attribute bleiben schreibgeschützt erhalten.
 
 ### 1.3 Sprache der Applikation
 
 Package Turbo ist auf Deutsch und Französisch verfügbar. Die Sprache wird unter *Extras → Benutzervorgaben* gewählt und nach einem Neustart wirksam.
 
-<span style="color:darkred">Abweichung: In der französischen Version sind derzeit nur Menüs, Dialoge und Schaltflächen übersetzt. Bezeichnungen von Metadatenfeldern, Registern, Prüfungen, Validierungsmeldungen und Berichten erscheinen weiterhin auf Deutsch.</span>
+Die französische Übersetzung umfasst derzeit Menüs, Dialoge und Schaltflächen. Metadatenfelder, Register, Prüfungen, Validierungsmeldungen und Berichte erscheinen teilweise weiterhin auf Deutsch.
 
 ![Französische Benutzeroberfläche](img/fr-hauptfenster.png)
 
@@ -72,7 +78,7 @@ Befehle in Menüs, Toolbar und Dialogen sind *kursiv* gesetzt. Menüpfade werden
 
 Package Turbo läuft unter Windows, macOS und Linux mit Python 3.11 oder neuer. Benötigt werden die Pakete PySide6 (ab 6.9) und lxml.
 
-<span style="color:darkred">Abweichung: Das Original basiert auf Eclipse RCP und Java (Amazon Corretto). Package Turbo benötigt keine Java-Laufzeitumgebung.</span>
+Package Turbo benötigt keine Java-Laufzeitumgebung.
 
 ### 2.2 Package Turbo starten
 
@@ -82,7 +88,7 @@ Package Turbo läuft unter Windows, macOS und Linux mit Python 3.11 oder neuer. 
 | Starten | `python main.py` oder `package-turbo` ausführen. |
 | Paket direkt öffnen | Den SIP-Ordner als Argument übergeben: `python main.py <SIP-Ordner>`. |
 
-<span style="color:darkred">Abweichung: Package Turbo wird derzeit nicht als fertige ZIP-Applikation ausgeliefert. Die Konfiguration für eine eigenständige Applikation (`pyside6-deploy`) ist vorbereitet, aber noch nicht erprobt.</span>
+Die Installation erfolgt derzeit über Python. Die Konfiguration für eine eigenständige Applikation (`pyside6-deploy`) ist vorbereitet; geprüfte Installationspakete stehen noch nicht zur Verfügung.
 
 Nach dem Start erscheint das Hauptfenster ohne geöffnetes Paket:
 
@@ -114,7 +120,7 @@ Der Name des Toplevel-Ordners folgt dem Muster `SIP_[Ablieferungsdatum JJJJMMTT]
 | Paket schreibgeschützt öffnen | Im Menü *Paket → Paket schreibgeschützt öffnen...* wählen. Das Paket kann dann nicht bearbeitet werden. |
 | Erneutes Öffnen | Im Menü *Paket* werden das aktuelle und die drei zuletzt geöffneten Pakete angezeigt. |
 
-<span style="color:darkred">Abweichung: Die Liste der zuletzt geöffneten Pakete bleibt auch nach einem Neustart erhalten. Drag & Drop ist nur möglich, solange kein Paket geöffnet ist.</span>
+Die Liste der zuletzt geöffneten Pakete bleibt nach einem Neustart erhalten. Drag & Drop zum Öffnen eines Pakets ist möglich, solange kein Paket geöffnet ist.
 
 Nach dem Öffnen zeigt der Editor das Register *Überblick*:
 
@@ -127,7 +133,7 @@ Mit *Paket → metadata.xml öffnen...* kann eine einzelne Datei `metadata.xml` 
 - Liegt die Datei im Ordner `header` eines SIP, wird das ganze SIP geöffnet und kann bearbeitet werden.
 - Liegt sie ausserhalb eines SIP, können die Metadaten nur gesichtet werden. Prüfungen, die die Primärdaten betreffen, sind dann nicht möglich.
 
-<span style="color:darkred">Abweichung: Eine `metadata.xml` ausserhalb eines SIP wird immer schreibgeschützt geöffnet (das Original rät nur davon ab, sie zu bearbeiten).</span>
+Eine `metadata.xml` ausserhalb eines SIP wird immer schreibgeschützt geöffnet.
 
 ### 4.3 Fehlermeldungen beim Öffnen eines Pakets
 
@@ -139,7 +145,7 @@ Mit *Paket → metadata.xml öffnen...* kann eine einzelne Datei `metadata.xml` 
 
 Ist das XML lesbar, aber nicht XSD-konform, wird das Paket geöffnet; die XSD-Fehler erscheinen in der Validierungshilfe unter der Prüfung *Allgemein*.
 
-<span style="color:darkred">Abweichung: Es gibt keinen Dialog mit der Schaltfläche *Details >>*; die Details stehen direkt in der Meldung bzw. in der Validierungshilfe.</span>
+Fehlerdetails stehen direkt in der Meldung oder in der Validierungshilfe.
 
 ---
 
@@ -151,7 +157,10 @@ Ist das XML lesbar, aber nicht XSD-konform, wird das Paket geöffnet; die XSD-Fe
 | Paket als ZIP speichern | Menü *Paket → Paket zippen...*. |
 | Speichern beim Schliessen | Wurden Metadaten geändert, wird beim Schliessen des Pakets oder von Package Turbo nachgefragt, ob gespeichert werden soll (*Speichern*, *Verwerfen*, *Abbrechen*). |
 
-<span style="color:darkred">Abweichung: Alle Funktionen, die das Dateisystem verändern (Import, Umbenennen, Löschen, Ersetzen, Normalisieren und Korrekturen aus der Validierungshilfe), speichern das Paket sofort, damit Primär- und Metadaten übereinstimmen. Dabei werden auch zuvor vorgenommene, noch nicht gespeicherte Änderungen gespeichert. Im Original gilt dies nur für das Ersetzen von Dateien.</span>
+> **Wichtig:** Funktionen, die Dateien verändern, arbeiten in einer separaten Arbeitskopie.
+> *Speichern* übernimmt die Dateisystemänderungen und Metadaten zusammen ins SIP.
+> *Verwerfen* entfernt die Arbeitskopie und lässt das ursprüngliche Paket unverändert.
+> Bewahren Sie trotzdem eine unabhängige Originalkopie auf.
 
 ### 5.1 Datei mit den Metadaten exportieren
 
@@ -170,7 +179,7 @@ Mit *Paket → metadata.xml exportieren...* wird eine Kopie der Metadaten an ein
 
 Es ist immer nur ein Paket geöffnet. Wird ein weiteres Paket geöffnet oder erstellt, wird das aktuelle geschlossen.
 
-<span style="color:darkred">Abweichung: Um ein anderes Paket anzuschauen, muss Package Turbo nicht neu gestartet werden.</span>
+Nach dem Schliessen können Sie ein anderes Paket öffnen, ohne Package Turbo neu zu starten.
 
 ---
 
@@ -185,7 +194,7 @@ Die Benutzeroberfläche besteht aus Menüleiste und Toolbar, den Navigatoren (li
 Die **Menüleiste** enthält:
 
 - *Paket*: Neues Paket, Öffnen, Speichern, ZIP, metadata.xml öffnen/exportieren, *Reports*, Schliessen, zuletzt geöffnete Pakete, Beenden.
-- *Bearbeiten*: Rückgängig, Ausschneiden, Kopieren und Einfügen in Textfeldern.
+- *Bearbeiten*: Rückgängig/Wiederholen, Paket-Verlauf leeren sowie Ausschneiden, Kopieren und Einfügen.
 - *Ansicht*: Perspektiven speichern, öffnen, löschen und zurücksetzen; Maximierung aufheben.
 - *Extras*: Suche, Paket vollständig validieren, Zeiträume auf Ablieferung kumulieren, *Normalisierung*, Stichprobe, *Benutzervorgaben*.
 - *Hilfe*: Benutzerdokumentation, Tastenbelegung, Über Package Turbo.
@@ -194,7 +203,7 @@ Die **Toolbar** enthält Neues Paket, Paket öffnen, Speichern, Paket schliessen
 
 Das **Viewmenü** der Navigatoren befindet sich in deren Titelzeile: Filter (z. B. *HG*, *OSP*, *OSP+D*, *leer*) sowie *+* (Alles aufklappen) und *−* (Alles zuklappen).
 
-<span style="color:darkred">Abweichung: Die Befehle der Toolbar und des Viewmenüs sind als Text statt als Icons dargestellt. *Ausschneiden/Kopieren/Einfügen* stehen nicht in der Toolbar, sondern im Menü *Bearbeiten* und im Kontextmenü der Textfelder.</span>
+*Ausschneiden/Kopieren/Einfügen* stehen im Menü *Bearbeiten* und im Kontextmenü der Textfelder zur Verfügung.
 
 ### 7.2 Grundelemente der Benutzeroberfläche
 
@@ -205,7 +214,7 @@ Das **Viewmenü** der Navigatoren befindet sich in deren Titelzeile: Filter (z. 
 | Ansicht wiederherstellen | *Ansicht → Maximierung aufheben* bzw. *Perspektive zurücksetzen*. |
 | Bildlaufleisten | Erscheinen, wenn nicht alle Informationen sichtbar sind. |
 
-<span style="color:darkred">Abweichung: Navigatoren und Aktionsviews können nicht geschlossen, abgedockt oder per Drag & Drop an eine andere Position verschoben werden.</span>
+Navigatoren und Aktionsviews haben feste Positionen. Ihre Grössen lassen sich über die Trennlinien anpassen.
 
 ### 7.3 Editor
 
@@ -220,13 +229,13 @@ Im Editor sind die Metadaten in thematischen Registern zusammengefasst. Alle Reg
 
 Pflichtfelder sind mit `*` markiert. Fehlende Pflichtangaben und Felder mit Validierungsfehlern werden rot dargestellt.
 
-<span style="color:darkred">Abweichung: Die Register liegen am unteren Rand des Editors. Die Tooltips enthalten nur für die wichtigsten Metadaten eine Beschreibung, da die XSD-Dateien keine Beschreibungstexte enthalten.</span>
+Die Register liegen am unteren Rand des Editors. Für die wichtigsten Metadaten stehen beschreibende Tooltips zur Verfügung.
 
 #### 7.3.1 Metadaten im Editor
 
 Register: *Überblick*, *Statistik*, *Validierung*, *Ordnungssystem*, *Ordnungssystemposition*, *Dossier* (auch Subdossiers), *Dokument*, *Vorgang*, *Aktivität*, *Mappe*, *Datei*, *Ordner*.
 
-<span style="color:darkred">Nicht umgesetzt: Es gibt kein Register *Archivische Vorgänge*.</span>
+Archivische Vorgänge haben derzeit kein eigenes Editorregister.
 
 #### 7.3.2 Metadaten zur Identifikation der Ablieferung
 
@@ -250,11 +259,14 @@ Das Metadatenfeld *Zusatzdaten* ist ein generisches Feld, in dem weitere deskrip
 | Merkmal ändern | Name oder Wert im Feld ändern. |
 | Merkmal entfernen | ✕ am Ende der Zeile klicken. Wird das letzte Merkmal entfernt, wird das Element *Zusatzdaten* gelöscht. |
 
-Zusatzdaten werden in der Aktionsview *Änderungen* aufgeführt und von der einfachen und erweiterten Suche berücksichtigt. Bei Vorgängen und Aktivitäten sind sie nur sichtbar, nicht bearbeitbar.
+Zusatzdaten werden in der Aktionsview *Änderungen* aufgeführt und von der einfachen und
+erweiterten Suche berücksichtigt. Bei strukturierten Vorgängen und Aktivitäten sind sie
+bearbeitbar, soweit das Paket-XSD sie vorsieht. Ein Legacy-Vorgang als einfacher Text wird
+nicht in eine strukturierte Entität umgewandelt.
 
 ![Zusatzdaten eines Dossiers](img/25-zusatzdaten.png)
 
-<span style="color:darkred">Abweichung: Das Original weist darauf hin, dass *Zusatzdaten* bei Ablieferungen an das BAR nicht verwendet werden dürfen. Package Turbo setzt diese Vorgabe bewusst nicht um: Zusatzdaten können überall erfasst werden, wo das XSD sie vorsieht, und lösen keine Validierungsmeldung aus. Bei der *Provenienz* sieht das XSD keine Zusatzdaten vor.</span>
+Zusatzdaten können dort erfasst werden, wo das Paket-XSD sie vorsieht. Bei der *Provenienz* sieht das XSD keine Zusatzdaten vor. Prüfen Sie zusätzlich, ob das empfangende Archiv Zusatzdaten akzeptiert.
 
 ### 7.4 Navigatoren
 
@@ -275,7 +287,7 @@ Der Ordnungssystem-Navigator zeigt das gesamte Ordnungssystem mit Ordnungssystem
 
 Damit eine gültige Ablieferung erstellt werden kann, muss sie mindestens eine Ordnungssystemposition enthalten.
 
-<span style="color:darkred">Abweichung: Die Filter wirken einzeln (ein Klick auf einen anderen Filter ersetzt den aktiven). Die Kombination von *OSP+D* und *OSP* ist bereits im Filter *OSP+D* enthalten. Ein Shift-Klick auf einen Pfeil öffnet den Baum nicht bis zur untersten Stufe.</span>
+Ein Klick auf einen anderen Filter ersetzt den aktiven Filter. *OSP+D* zeigt Ordnungssystempositionen mit den zugehörigen Dossiers.
 
 #### 7.4.3 Dossier-Navigator
 
@@ -316,7 +328,7 @@ Die Register der Objekte zeigen einen Pfad aus Links (z. B. *2009/1 › KOST-CEC
 
 Bei sehr grossen Ablieferungen wird *Alles aufklappen* automatisch deaktiviert, wenn ein Navigator mehr Objekte enthält als der Schwellwert. Der Schwellwert (Standard 15 000) wird unter *Extras → Benutzervorgaben → Navigatoren* festgelegt.
 
-<span style="color:darkred">Abweichung: Es gibt einen gemeinsamen Schwellwert für alle Navigatoren statt je einen pro Navigator.</span>
+Der Schwellwert gilt gemeinsam für alle Navigatoren.
 
 ### 7.8 Aktionsviews: Validierungshilfe, Notiz, Stichprobe, Suche, Änderungen
 
@@ -335,7 +347,7 @@ Dateien werden mit dem Standardprogramm des Betriebssystems geöffnet:
 - in den Navigatoren mit Doppelklick auf die Datei oder über das Kontextmenü *Datei zeigen*;
 - in den Aktionsviews mit Doppelklick auf die Zeile (das Objekt wird im Navigator markiert) und danach *Datei zeigen*.
 
-<span style="color:darkred">Abweichung: Die Aktionsviews haben keinen eigenen Befehl *Datei zeigen*; Dateien werden über den Navigator geöffnet.</span>
+Dateien werden über den Navigator geöffnet.
 
 ---
 
@@ -350,7 +362,7 @@ Bei der Erstellung einer Ablieferung wird im Paket-Navigator die Ordnerstruktur 
 | Aktion | Vorgehen |
 |---|---|
 | 1. Neues Paket erstellen | Toolbar *Neues Paket*, Menü *Paket → Neues Paket erstellen...* oder `Ctrl+N`. |
-| 2. XSD-Version | Die verwendete Version wird angezeigt (eCH-0160 v1.2, arelda v4, Schema-Version 5.0). |
+| 2. XSD-Version | eCH-0160 v1.0, v1.1, v1.2 oder v1.3 wählen. Die Voreinstellung ist v1.3 (arelda v4, Schema-Version 5.1). |
 | 3. Angaben erfassen | Ablieferungstyp (GEVER/FILES), abliefernde Stelle, Referenz, optional Aktenbildner und Name des Ordnungssystems. |
 | 4. Paket benennen | Der SIP-Name wird aus Datum, abliefernder Stelle und Referenz vorgeschlagen und kann angepasst werden. |
 | 5. Speicherort | Mit *Durchsuchen...* den Speicherort wählen. |
@@ -358,7 +370,7 @@ Bei der Erstellung einer Ablieferung wird im Paket-Navigator die Ordnerstruktur 
 
 ![Dialog Neues Paket erstellen](img/11-neues-paket.png)
 
-<span style="color:darkred">Abweichung: Alle Angaben werden in einem einzigen Dialog statt in mehreren Schritten (*Weiter*) erfasst. Es steht nur eine XSD-Version zur Auswahl. Ein neuer Ordner für den Speicherort wird im Ordnerdialog des Betriebssystems angelegt.</span>
+Alle Angaben werden in einem Dialog erfasst. Neue Ordner für den Speicherort lassen sich im Ordnerdialog des Betriebssystems anlegen.
 
 #### 8.1.2 Neues Paket erstellen und eine Struktur importieren
 
@@ -394,7 +406,7 @@ Für jede importierte Datei wird die Prüfsumme (MD5) berechnet und im Inhaltsve
 
 ![Kontextmenü des Paket-Navigators](img/10-paket-kontextmenu.png)
 
-<span style="color:darkred">Abweichung: Beim Zusammenführen wird nur einmal für alle Ordner gefragt (kein *Auf alle Ordner anwenden* pro Ordner).</span>
+Die Entscheidung zum Zusammenführen und Ersetzen gilt für den gesamten Import. Prüfen Sie die angezeigten Konflikte vor der Bestätigung.
 
 #### 8.2.2 Ordnerstruktur im Paket-Navigator erstellen
 
@@ -417,7 +429,7 @@ Enthält der neue Name unerlaubte Zeichen oder existiert bereits ein Objekt mit 
 
 #### 8.2.6 Eine Datei (Primärdatei) im Paket ersetzen
 
-Rechtsklick auf eine Datei → *Datei ersetzen...* und die neue Datei wählen (der Name muss nicht übereinstimmen). Die Prüfsumme wird angepasst; Name und übrige Metadaten bleiben erhalten. Das Paket wird anschliessend gespeichert.
+Rechtsklick auf eine Datei → *Datei ersetzen...* und die neue Datei wählen (der Name muss nicht übereinstimmen). Die Prüfsumme wird in der Arbeitskopie angepasst; Name und übrige Metadaten bleiben erhalten. *Speichern* übernimmt die Ersatzdatei und ihre Metadaten ins SIP.
 
 #### 8.2.7 Mehrere Dateien (Primärdaten) im Paket ersetzen
 
@@ -437,7 +449,7 @@ Ordner bis zur Stufe *Anzahl OSP Stufen* werden zu Ordnungssystempositionen, die
 
 ![Dialog Massenzuweisung](img/12-massenzuweisung.png)
 
-<span style="color:darkred">Abweichung: Die Ordner werden nicht per Drag & Drop, sondern über das Kontextmenü zugewiesen. Es gibt keine Vorschau des Vorschlags (*Zuweisen*, *Zuweisung löschen*), keine Stufenanzeige und keine Anpassung pro Ordner. Die Anzahl nicht zugewiesener Dateien wird nach dem Fertigstellen gemeldet.</span>
+Ordner werden über das Kontextmenü zugewiesen. Eine Vorschau oder Anpassung pro Ordner steht derzeit nicht zur Verfügung. Nach dem Fertigstellen wird die Anzahl nicht zugewiesener Dateien gemeldet.
 
 #### 8.3.2 Fehlermeldungen bei der Massenzuweisung
 
@@ -448,7 +460,7 @@ Ordner bis zur Stufe *Anzahl OSP Stufen* werden zu Ordnungssystempositionen, die
 | Dossiers neben OSP | Dossiers können nicht neben Ordnungssystempositionen angelegt werden. |
 | Dateien nicht vollständig zugewiesen | Die Anzahl nicht zugewiesener Dateien wird gemeldet. |
 
-<span style="color:darkred">Abweichung: Bereits zugewiesene Dateien werden bei einer erneuten Zuweisung an dasselbe Objekt nicht doppelt zugewiesen; an andere Objekte können sie erneut zugewiesen werden.</span>
+Erneutes Zuweisen an dasselbe Objekt erzeugt keine doppelte Zuweisung. Eine Datei kann mehreren Objekten zugewiesen werden.
 
 #### 8.3.3 Ordnungssystem mit Dossiers, Dateien und Dokumenten im Ordnungssystem-Navigator erstellen
 
@@ -475,7 +487,7 @@ Nicht anwendbare Befehle sind ausgegraut. Neue Objekte erhalten eine Nummer bzw.
 
 Eine vorhandene Nummerierung wird nach dem Verschieben nicht automatisch angepasst.
 
-<span style="color:darkred">Abweichung: Objekte werden über *Ausschneiden/Einfügen* und *Nach oben/Nach unten* statt per Drag & Drop verschoben.</span>
+Objekte werden mit *Ausschneiden/Einfügen* verschoben und mit *Nach oben/Nach unten* umgeordnet.
 
 #### 8.3.5 Objekte im Ordnungssystem-Navigator löschen
 
@@ -488,7 +500,7 @@ Rechtsklick → *Löschen* oder Taste `Entf`. Das Objekt wird mit allen darunter
 
 Zugewiesene Dateien sind im Paket-Navigator mit einem Pfeil auf dem Symbol gekennzeichnet (`F↗`), nicht zugewiesene rot und kursiv.
 
-<span style="color:darkred">Abweichung: Dateien werden über das Kontextmenü statt per Drag & Drop zugewiesen.</span>
+Dateien werden über das Kontextmenü zugewiesen.
 
 #### 8.3.7 Ordnungssystem nummerieren
 
@@ -514,7 +526,27 @@ Rechtsklick auf das Ordnungssystem → *Ordnungssystem neu nummerieren...* und d
 
 ![Feld mit Validierungsfehler (Dossiertitel zu kurz)](img/15-feldfehler.png)
 
-<span style="color:darkred">Abweichung: Es gibt keine Toolbar-Schaltflächen für *Ausschneiden/Kopieren/Einfügen*. *Rückgängig* wirkt nur innerhalb eines Feldes; eine übernommene Änderung wird durch erneutes Bearbeiten korrigiert.</span>
+*Rückgängig* wirkt bei noch nicht übernommenen Eingaben im aktiven Textfeld. Für übernommene
+Paketänderungen stehen die Pfeilschaltflächen der Toolbar sowie *Bearbeiten → Rückgängig*
+und *Wiederholen* mit den üblichen Tastenkombinationen zur Verfügung. Wiederholbar sind
+Metadaten-, Struktur-, Notiz- und Dateiänderungen der aktuellen Sitzung.
+
+Paket-Undo/Redo stellt XML und Dateiinhalt zusammen in der Arbeitskopie wieder her.
+Auch nach *Speichern* kann eine Änderung in derselben Sitzung zurückgenommen werden;
+erst erneutes *Speichern* übernimmt die Rücknahme ins SIP. Die Historie dokumentiert
+Rücknahme und Wiederholung als neue, mit der ursprünglichen Operation verknüpfte Ereignisse.
+
+> **Wichtig:** Der Paket-Verlauf umfasst höchstens 20 Operationen und benötigt private
+> Schnappschussdaten innerhalb des Arbeitskopie-Limits. Eine neue Änderung nach Undo
+> verwirft den Redo-Zweig. *Paket-Verlauf leeren*, *Verwerfen*, Paketwechsel und normales
+> Beenden entfernen diesen Sitzungsverlauf, nicht die dauerhafte Metadaten-Historie.
+> Nach einem Neustart können Arbeitskopien fortgesetzt werden, ihre früheren Undo-Schritte
+> werden aber nicht wiederhergestellt. Änderungen bleiben bis *Speichern* in der Arbeitskopie.
+
+Nach einer Schnappschuss-Wiederherstellung muss die vollständige Validierung erneut
+ausgeführt werden. Ist eine Rücksetzung etwa durch eine geöffnete Datei blockiert,
+bleibt der vorherige Arbeitsstand am in der Fehlermeldung genannten Checkpoint erhalten;
+löschen Sie ihn nicht, bevor der Konflikt geklärt ist.
 
 ### 9.2 Metadaten mehrfach editieren (Massenmutation)
 
@@ -525,7 +557,7 @@ Rechtsklick auf das Ordnungssystem → *Ordnungssystem neu nummerieren...* und d
 
 ![Dialog Massenmutation](img/13-massenmutation.png)
 
-<span style="color:darkred">Abweichung: Pro Durchgang wird ein Metadatum eines Objekttyps geändert, statt alle Felder des gewählten Objekts in einem Formular. Pflichtfelder wie Titel oder Aktenzeichen sowie die *Zusatzdaten* können nicht per Massenmutation geändert werden.</span>
+Pro Durchgang wird ein Metadatum eines Objekttyps geändert. Pflichtfelder wie Titel oder Aktenzeichen sowie die *Zusatzdaten* können derzeit nicht per Massenmutation geändert werden.
 
 ### 9.3 Zeitangaben in Package Turbo
 
@@ -537,7 +569,7 @@ Rechtsklick auf das Ordnungssystem → *Ordnungssystem neu nummerieren...* und d
 
 Ungültige Zeitangaben werden mit einer Meldung abgelehnt.
 
-<span style="color:darkred">Abweichung: Zusätzlich wird das Format `JJJJ-MM-TT` akzeptiert. Ein leeres *bis*-Feld wird als *keine Angabe* gespeichert.</span>
+Auch das Format `JJJJ-MM-TT` wird akzeptiert. Ein leeres *bis*-Feld wird als *keine Angabe* gespeichert.
 
 ### 9.4 Zeiträume kumulieren
 
@@ -555,9 +587,123 @@ Bei der Kumulierung werden nur konkrete Angaben berücksichtigt; *keine Angabe* 
 
 ![Aktionsview Änderungen](img/16-aenderungen.png)
 
-<span style="color:darkred">Abweichung: Strukturelle Änderungen (Objekte erstellen, verschieben, löschen, zuweisen) erscheinen ebenfalls in der Liste, mit dem Metadatum *Struktur*.</span>
+Strukturelle Änderungen (Objekte erstellen, verschieben, löschen, zuweisen) erscheinen mit dem Metadatum *Struktur* in der Liste.
+
+### 9.6 Dauerhafte Metadaten-Historie
+
+Vor der ersten Bearbeitung wird die Identität unter *Bearbeitet durch* bestätigt.
+Nach der Bestätigung führen Sie die gewünschte Bearbeitung erneut aus. Die Identität
+kann auch unter *Extras → Benutzervorgaben → Metadaten-Historie* festgelegt werden.
+Sie wird bei den zugehörigen Änderungen gespeichert; verwenden Sie keine vertraulichen
+Zugangsdaten in diesem Feld.
+
+Die Aktionsview *Metadaten-Historie* zeigt dauerhaft gespeicherte Ereignisse mit UTC-Zeit,
+Bearbeiter, Ergebnis und alten/neuen Metadatenwerten. Doppelklick öffnet die Ereignis-
+und Transaktionsdetails. Die Historie bleibt nach *Speichern* und erneutem Öffnen erhalten.
+*Verwerfen* dokumentiert verworfene Änderungen, ohne sie in die XML-Datei zu übernehmen.
+
+Der neben dem Paket liegende Ordner `<SIP-Name>.package-turbo` enthält das Journal und
+den Wiederherstellungszustand. Er gehört nicht in `header` oder `content`. Die Historie
+enthält auch frühere, möglicherweise vertrauliche Werte: schützen Sie diesen Ordner
+und bewahren Sie ihn beim Weitergeben einer Arbeitskopie separat auf. Automatisches
+Zuordnen nach einem Umbenennen oder Kopieren des Pakets ist noch nicht umgesetzt.
+
+Bei einem unterbrochenen Speichervorgang wählen Sie *Wiederherstellen* in der Metadaten-
+Historie. Die Wiederherstellung prüft die tatsächliche XML-Datei gegen die dokumentierten
+Vorher-/Nachher-Prüfsummen. Bei einem Konflikt wird nichts überschrieben. Externe Änderungen
+oder zwischenzeitliche Änderungen einer anderen Sitzung müssen vor weiterer Bearbeitung
+geklärt werden. Eine vorhandene Wiederherstellung muss abgeschlossen werden, bevor
+Änderungen verworfen werden können.
+
+Dateiimporte, Ersetzen, Löschen, Umbenennen und Normalisierung ändern zunächst nur die
+Arbeitskopie. *Speichern* protokolliert den Paketwechsel, behält das vorherige Paket im
+Begleitordner und übernimmt Dateien und XML zusammen. Bei einer Unterbrechung wird anhand
+der Dateimanifeste festgestellt, ob der Wechsel fertig war oder das Original zurückgesetzt
+werden muss. Unklare externe Änderungen werden nicht automatisch überschrieben.
+
+Eine protokollierte Dateiarbeitskopie lässt sich mit *Wiederherstellen* nach einem Neustart
+fortsetzen. Im schreibgeschützten Modus bleibt sie unangetastet. Das Arbeitskopie-Limit
+unter *Benutzervorgaben → Metadaten-Historie* beträgt standardmässig 32 GiB. Vollständige
+Kopien, Prüfsummen und zurückbehaltene Originalpakete benötigen Zeit und Speicherplatz.
+Bei unzureichendem Platz wird die Operation abgelehnt; alte Sicherungen werden nicht
+automatisch gelöscht. Verknüpfungen und Junctions werden nicht als Paketdateien akzeptiert.
+
+Auch übernommene Metadatenänderungen werden als Arbeitskopie protokolliert und können
+über *Wiederherstellen* nach einem Neustart fortgesetzt werden. Noch nicht übernommene
+Texte im aktiven Eingabefeld gehören nicht zu dieser Wiederherstellung.
+
+> **Wichtig:** Automatische Aufbewahrungsbereinigung folgt noch; die manuelle Vorschau ist
+> nachfolgend beschrieben. Der Undo-Verlauf ist
+> sitzungsgebunden; nach einem Absturz können unbenutzte
+> Schnappschussordner verbleiben. Die Erfassung aller Prüf-/Exportvorgänge und die
+> vollständige PREMIS-Objektmodellierung sind noch nicht abgeschlossen.
+
+### 9.7 Fortschritt und Abbrechen
+
+Kopieren, Prüfsummen, Schnappschuss-Dateien und entsprechende Metadaten-Byteoperationen
+laufen auf einem Hintergrund-Worker. Der Fortschrittsdialog zeigt die aktuelle Phase
+und, soweit bekannt, bearbeitete und gesamte Bytes. Ohne bekannte Gesamtmenge ist der
+Balken unbestimmt; Byteangaben beziehen sich auf die aktuelle Phase, nicht das ganze Paket.
+
+*Abbrechen* fordert einen kooperativen Abbruch an. Er erfolgt an einer sicheren Chunk-
+oder Phasengrenze; ein bereits laufender Dateisystemaufruf muss möglicherweise zuerst
+zurückkehren. Während atomarer Veröffentlichungen, Rücksetzungen und geschützter
+Speicher-/Wiederherstellungsphasen ist Abbrechen deaktiviert. Das Programmfenster wird
+nicht mitten in einer geschützten Transaktion geschlossen.
+
+Ein Abbruch verwirft nicht automatisch alle vorher übernommenen Änderungen der Arbeitskopie.
+Prüfen Sie anschliessend den Arbeitsstand und wählen Sie bewusst *Speichern* oder *Verwerfen*.
+Die vollständige Validierung verwendet eine separate XML-Sicht; abgebrochene Ergebnisse
+werden nicht als abgeschlossene Prüfung angezeigt. Änderungen sind während der Verarbeitung
+gesperrt. Umfangreiche XML-/Modellaktualisierungen können weiterhin Zeit auf dem GUI-Thread
+benötigen; inkrementelle Verarbeitung und umfassende Leistungsgrenzen folgen noch.
 
 ---
+
+### 9.8 Schnappschuss-Speicher und Sicherungskopien bereinigen
+
+Unveränderte Undo-Inhalte werden innerhalb des privaten Sitzungsverzeichnisses nur einmal
+gespeichert und schreibgeschützt wiederverwendet. SIP und bearbeitbare Arbeitskopie sind
+nicht mit diesen Objekten hartverknüpft. Beim Rückgängigmachen wird wieder eine unabhängige
+Arbeitskopie erstellt; ihre ursprünglichen Dateimodi werden wiederhergestellt. Bearbeiten
+Sie die internen Schnappschussdateien nicht direkt.
+
+Unter *Benutzervorgaben → Metadaten-Historie* legen *Sicherungskopien behalten* und
+*Mindestalter (Tage)* die manuelle Bereinigung fest. Die Voreinstellung behält insgesamt
+drei Generationen einschliesslich der geschützten neuesten Sicherung; ältere Kopien sind
+frühestens sieben Tage nach ihrer protokollierten Archivierung löschbar.
+
+1. In der *Metadaten-Historie* auf *Speicher bereinigen...* klicken.
+2. Verzeichnisnamen, Archivierungszeit und Byteangaben der Vorschau prüfen.
+3. *Entfernen* bestätigt ausschliesslich diese geprüfte Auswahl; *Abbrechen* löscht nichts.
+
+Geschützt bleiben das SIP, die neueste Sicherung, Arbeitskopien, Undo-Daten, Recovery-
+Checkpoints, Journal und unbekannte Verzeichnisse. Sicherungen aus älteren Versionen ohne
+Registrierungsereignis werden nicht automatisch als löschbar angenommen. Ändern sich
+Richtlinie, Historie oder Dateien, muss die Vorschau neu erstellt werden. Ein vorbereiteter
+Speichervorgang muss vor der Bereinigung wiederhergestellt werden.
+
+Die Byteangabe zählt bereinigungsfähige Dateiinhalte. Tatsächlich freigegebene Blöcke können
+wegen Dateisystem-Metadaten, Komprimierung oder Sparse-Dateien abweichen. Eine teilweise
+fehlgeschlagene Bereinigung protokolliert bereits entfernte Ziele; sie verändert das SIP
+nicht. Löschen Sie das Begleitverzeichnis nicht, um eine Speicherwarnung zu umgehen.
+
+Arbeitskopien, Operations-Checkpoints und aufbewahrte Originalpakete benötigen weiterhin
+vollständige Kopien. Die neue Wiederverwendung reduziert Undo-Speicher, ersetzt aber noch
+keine vollständig inkrementelle Paketverarbeitung oder automatische Orphan-Bereinigung.
+
+### 9.9 Wiederholbare Werte und Dateiverweise
+
+Wiederholbare einfache Textwerte, etwa Dokumentautoren, erscheinen als geordnete Liste.
+Mit *+* wird eine neue Eingabezeile ergänzt, mit den Pfeilen wird umgeordnet und mit *×*
+ein Wert entfernt. Die Anzahl folgt den Vorgaben des Paket-XSD. Mehrzeilige Werte bleiben
+erhalten. Bestehende Elementattribute werden beim Umordnen zusammen mit ihrer Zeile bewegt.
+Skalare Massenmutation bietet solche Listen nicht als einzelne Textfelder an.
+
+Im Abschnitt *Dateiverweise* werden zugewiesene Dateien mit ihren schemaabhängigen
+Attributen angezeigt. Eine Attributänderung gehört zur Metadaten-Arbeitskopie und wird
+mit *Speichern* übernommen; sie ist über Paket-Undo/Redo rücksetzbar. Die vollständige
+XSD-Validierung prüft weiterhin das gesamte XML, einschliesslich Datentypen und Facetten.
 
 ## 10. Ablieferung prüfen und korrigieren
 
@@ -595,7 +741,7 @@ Package Turbo prüft die Dateien in `content` anhand des **Katalogs archivischer
 | Nicht akzeptiert (z. B. ODT/ODP, DNG, MHTML, ARC, STEP) | Fehler |
 | Nicht im KaD erfasst | Warnung |
 
-<span style="color:darkred">Abweichung: Das Original prüft gegen die Liste archivtauglicher Formate des BAR. Package Turbo verwendet den KaD der KOST-CECO und erkennt Formate nur an der Dateiendung. Varianten mit gleicher Endung (z. B. PDF/A-3 oder GeoTIFF, beide nicht akzeptiert) werden daher wie PDF bzw. TIFF bewertet. Eine Konvertierung wird – wie im Original – nicht angeboten.</span>
+> **Wichtig:** Die Formaterkennung verwendet derzeit nur die Dateiendung. Varianten mit gleicher Endung (z. B. PDF/A-3 oder GeoTIFF) lassen sich damit nicht unterscheiden. Die Bewertung ist kein Nachweis der Formatkonformität, etwa von PDF/A. Package Turbo konvertiert keine Dateien.
 
 #### 10.4.2 Paketgrösse
 
@@ -611,7 +757,7 @@ Prüfung, ob der Pfad zu einer Datei oder einem Ordner (inkl. Toplevel-Ordner) 1
 | Alle Pfade kürzen | Menü *Extras → Normalisierung → Pfadlängen bereinigen...* oder Kontextmenü der Fehlermeldung. Ordner werden zu `O1, O2, …`, Dateien zu `P1, P2, …` (die Endung bleibt erhalten). Die Originalnamen bleiben in den Metadaten erhalten. |
 | Rückgängig machen | *Extras → Normalisierung → Datei- und Ordnernamen denormalisieren...*. |
 
-Das Paket wird nach diesen Funktionen automatisch gespeichert.
+Die Umbenennungen werden in der Arbeitskopie ausgeführt. *Speichern* übernimmt sie ins SIP; *Verwerfen* behält die ursprünglichen Namen.
 
 #### 10.4.4 Prüfsumme
 
@@ -625,7 +771,7 @@ Prüfung, ob der Name des Toplevel-Ordners dem Muster `SIP_[Ablieferungsdatum]_[
 
 Prüfung, ob die Schutzfrist eine Ganzzahl ist. Mit Doppelklick auf die Meldung wird das Objekt im Editor angezeigt und kann korrigiert werden.
 
-<span style="color:darkred">Abweichung: Weitere Verstösse gegen das XSD (z. B. zu lange Texte, ungültige Datentypen) erscheinen nicht unter *Ungültige Angabe* mit Bezug zum Feld, sondern als technische Meldung unter der Prüfung *Allgemein* (siehe 10.7.10).</span>
+Weitere XSD-Verstösse (z. B. zu lange Texte oder ungültige Datentypen) erscheinen unter der Prüfung *Allgemein* (siehe 10.7.10).
 
 #### 10.4.7 Unzulässige Dateien und Ordner
 
@@ -638,7 +784,7 @@ Prüfung, ob der Ordner `header` ausschliesslich `metadata.xml` und den Ordner `
 | Fehlerbehebung | Vorgehen |
 |---|---|
 | Unzulässige Inhalte | Rechtsklick auf die Meldung → *Im Dateisystem löschen*. |
-| Fehlende XSD-Dateien | Rechtsklick auf die Meldung → *Ins SIP übernehmen*. Die XSD-Dateien (eCH-0160 v1.2) werden im SIP und im metadata.xml ergänzt. |
+| Fehlende XSD-Dateien | Rechtsklick auf die Meldung → *Ins SIP übernehmen*. Fehlende XSD-Dateien werden aus der zur deklarierten Paketversion passenden Sammlung ergänzt und im Inhaltsverzeichnis eingetragen. Bewahren Sie angepasste Original-Schemas auf; diese werden nicht durch die Standardsammlung rekonstruiert. |
 
 #### 10.4.9 Leere Ordner
 
@@ -653,7 +799,7 @@ Prüfung, ob Datei- und Ordnernamen nur die Zeichen `A–Z a–z 0–9 _ . -` en
 | Unerlaubte Zeichen ersetzen | Rechtsklick auf die Meldung oder *Extras → Normalisierung → Datei- und Ordnernamen normalisieren...*. Umlaute werden umschrieben (ä → ae), Leerzeichen und andere Zeichen durch `_` ersetzt. |
 | Rückgängig machen | *Extras → Normalisierung → Datei- und Ordnernamen denormalisieren...*. |
 
-<span style="color:darkred">Abweichung: Die Normalisierung kann jederzeit ausgeführt werden; das Paket wird anschliessend automatisch gespeichert (im Original muss vorher gespeichert werden).</span>
+Die Normalisierung verändert die Arbeitskopie. Beim nächsten *Speichern* werden auch zuvor vorgenommene Metadatenänderungen übernommen.
 
 ### 10.5 Prüfung des Aufbaus des Ordnungssystems und der Dossierbenennung
 
@@ -698,7 +844,7 @@ Beim Löschen von Dateien in den Metadaten werden auch ihre Zuweisungen entfernt
 | 10.7.10 Allgemein | Validierung des metadata.xml gegen das XSD im Ordner `header/xsd`. Die technische Meldung beginnt mit «Das Paket entspricht nicht den Anforderungen …» und nennt die Zeile. | Fehler im metadata.xml analysieren. |
 | 10.7.11 Gültigkeitsprüfung fehlgeschlagen | Es sind noch Fehler vorhanden. | Sind alle übrigen Fehler behoben, wird angeboten, das Paket zu speichern und erneut vollständig zu validieren. |
 
-<span style="color:darkred">Abweichung: Die obligatorischen Metadaten gemäss *Data Dictionary* werden nicht vollständig aus dem XSD abgeleitet, sondern anhand der oben aufgeführten Liste geprüft.</span>
+Die Prüfung auf fehlende Angaben verwendet die oben aufgeführte Liste. Zusätzlich prüft die XSD-Validierung die Pflichtangaben des Paket-Schemas.
 
 ### 10.8 Weitere Hilfsmittel für die Prüfung der Ablieferung
 
@@ -715,7 +861,15 @@ Das Register *Statistik* enthält:
 
 ## 11. Darstellung von Vorgängen und Aktivitäten
 
-Vorgänge und Aktivitäten (seit eCH-0160 v1.1) werden als Knoten im Ordnungssystem- und Dossier-Navigator dargestellt. Ihre Metadaten sind im Editor ersichtlich, können aber nicht bearbeitet werden (*nur Anzeige*). Sie können nicht erstellt oder gelöscht werden. Die Suche berücksichtigt auch ihre Metadaten.
+Strukturierte Vorgänge und Aktivitäten werden für GEVER-Pakete der Versionen v1.1 bis
+v1.3 als Knoten im Ordnungssystem- und Dossier-Navigator dargestellt. Im Kontextmenü eines
+Dossiers steht *Neuer Vorgang*, bei einem Vorgang *Neue Aktivität* zur Verfügung, wenn das
+jeweilige Paket-XSD diese Unterobjekte deklariert. Metadaten und Zusatzdaten sind bearbeitbar;
+auch Löschen, Verschieben, Reihenfolge und Paket-Undo/Redo verwenden die Arbeitskopie.
+
+FILES-Schemas bieten diese GEVER-Entitäten nicht an. In eCH-0160 v1.0 ist ein Vorgang ein
+einfacher Text: Er bleibt sichtbar und schreibgeschützt, ohne zusätzliche strukturierte
+Unterelemente. Die Suche berücksichtigt vorhandene Prozess-/Aktivitätsmetadaten weiterhin.
 
 ---
 
@@ -723,7 +877,9 @@ Vorgänge und Aktivitäten (seit eCH-0160 v1.1) werden als Knoten im Ordnungssys
 
 Mappen (seit eCH-0160 v1.2) werden im Ordnungssystem- und Dossier-Navigator dargestellt. Sie können im Ordnungssystem-Navigator erstellt, verschoben und gelöscht werden; die Metadaten sind im Editor bearbeitbar und stehen für die Massenmutation und die Suche zur Verfügung.
 
-> **Tipp:** Mappen werden vom BAR nicht zugelassen und dürfen in einer Ablieferung an das BAR nicht vorkommen. Ablagen sind durch Ordnungssystempositionen und Dossiers zu strukturieren.
+In eCH-0160 v1.3 sind rekursive Mappen möglich. Die angebotenen Unterobjekte und ihre Reihenfolge richten sich nach dem jeweiligen Kontext im Paket-XSD. Eine Mappe für Dossiers bietet beispielsweise keine Dokumente als direkte Unterobjekte an. Ältere Pakete behalten die Regeln ihres eigenen Schemas.
+
+> **Wichtig:** Die Zulässigkeit von Mappen hängt zusätzlich von den Anforderungen des empfangenden Archivs ab. Stimmen Sie die Struktur der Ablieferung mit diesem Archiv ab.
 
 ---
 
@@ -742,7 +898,7 @@ Package Turbo bietet die *einfache Suche* (über alle Metadaten) und die *erweit
 
 Ohne Treffer erscheint die Meldung *Keine Treffer*; das bisherige Resultat bleibt angezeigt. Ohne Suchbegriff wird zur Eingabe aufgefordert.
 
-<span style="color:darkred">Abweichung: Der Dialog *Keine Treffer* hat nur *OK* (keine Schaltflächen *Neue Suche* / *Suche abbrechen*); der Suchbegriff bleibt im Feld erhalten.</span>
+Bei einer Suche ohne Treffer bleibt der Suchbegriff im Feld erhalten und kann für die nächste Suche angepasst werden.
 
 #### 13.1.3 Anzeige der Resultate der einfachen Suche
 
@@ -762,7 +918,7 @@ Spalten: *Objekt*, *Objektname*, *Metadatum*, *Wert*. Die Anzahl Objekte wird an
 
 Ohne Treffer erscheint *Keine Treffer*. Kriterien mit unterschiedlichen Objekttypen ergeben keine Treffer.
 
-<span style="color:darkred">Abweichung: Unvollständige Kriterien (ohne Objekt oder Metadatum) werden ignoriert statt mit einer Meldung abgelehnt.</span>
+Kriterien ohne Objekt oder Metadatum werden ignoriert. Prüfen Sie die Vollständigkeit der Kriterien, bevor Sie die Suche starten.
 
 #### 13.2.3 Anzeige der Resultate der erweiterten Suche
 
@@ -792,7 +948,7 @@ Notizen werden als `archivischeNotiz` in den Metadaten gespeichert und bleiben i
 
 Im Paket-Navigator können Notizen nur zu Dateien erfasst werden.
 
-<span style="color:darkred">Abweichung: Notizen sind nur für Objekte möglich, die gemäss XSD eine `archivischeNotiz` haben dürfen (nicht für Ordner, Mappen, Vorgänge und Aktivitäten). Der Befehl ist bei diesen Objekten ausgegraut.</span>
+Notizen sind für Objekte möglich, deren Paket-XSD eine `archivischeNotiz` erlaubt. Bei anderen Objekten ist der Befehl ausgegraut.
 
 #### 14.1.2 Markierung der Objekte mit Notizen
 
@@ -827,7 +983,7 @@ Die Aktionsview *Stichprobe* zeigt *Objekt*, *Aktenzeichen* und *Titel* der ausg
 
 ![Aktionsview Stichprobe](img/18-stichprobe.png)
 
-<span style="color:darkred">Abweichung: Die Stichprobe wird nicht automatisch beim Öffnen gezogen, sondern erst mit *Neue Auswahl*.</span>
+*Neue Auswahl* erstellt eine Stichprobe für das geöffnete Paket.
 
 ---
 
@@ -843,7 +999,7 @@ Alle Berichte enthalten ein Deckblatt mit Aktenbildner, abliefernder Stelle, Abl
 
 ![Ablieferungsverzeichnis (Deckblatt und erste Seite)](img/24-bericht.png)
 
-<span style="color:darkred">Abweichung: Der Bericht wird zuerst gespeichert und danach im PDF-Programm des Betriebssystems geöffnet, nicht in einem eigenen Viewer.</span>
+Der Bericht wird gespeichert und anschliessend im PDF-Programm des Betriebssystems geöffnet.
 
 ---
 
@@ -859,7 +1015,7 @@ Alle Berichte enthalten ein Deckblatt mit Aktenbildner, abliefernder Stelle, Abl
 | Perspektive anzeigen | *Ansicht → Perspektive öffnen* und die Perspektive wählen. |
 | Perspektive löschen | *Ansicht → Perspektive löschen*. |
 
-<span style="color:darkred">Abweichung: Navigatoren und Aktionsviews können nicht verschoben werden; eine Perspektive speichert nur die Grössen der Bereiche. Es gibt keine Standard-Perspektive und keine Symbole für Perspektiven in der Toolbar.</span>
+Eine Perspektive speichert die Grössen der Bereiche. Ihre Positionen bleiben unverändert. *Perspektive zurücksetzen* stellt die Grundeinstellung wieder her.
 
 ### 16.2 Grundeinstellung wiederherstellen
 
@@ -881,7 +1037,7 @@ Die Tabellen der Aktionsviews können sortiert und konfiguriert werden:
 | Sortierung aufheben | `Alt`+Klick auf den Spaltentitel. |
 | Spalten ein- und ausblenden | Rechtsklick auf einen Spaltentitel und die Spalten an- bzw. abwählen. |
 
-<span style="color:darkred">Abweichung: Der Dossier-Navigator kann nicht sortiert und seine Spalten können nicht ausgeblendet werden. Die Spaltenreihenfolge kann nicht verändert werden.</span>
+Die Spaltenreihenfolge ist derzeit fest. Im Dossier-Navigator stehen Sortierung und Ausblenden von Spalten noch nicht zur Verfügung.
 
 ---
 
@@ -894,7 +1050,7 @@ Die Tabellen der Aktionsviews können sortiert und konfiguriert werden:
 
 Symbole (Fehler, Warnungen, Objekte) werden als Text exportiert.
 
-<span style="color:darkred">Abweichung: Zusätzlich zur Zwischenablage gibt es den Export als CSV-Datei (Trennzeichen `;`, UTF-8).</span>
+Tabellen können über die Zwischenablage oder als CSV-Datei mit Trennzeichen `;` und UTF-8-Kodierung exportiert werden.
 
 ---
 
@@ -906,7 +1062,7 @@ Symbole (Fehler, Warnungen, Objekte) werden als Text exportiert.
 
 *Hilfe → Benutzerdokumentation* oder `F1` öffnet die Benutzerdokumentation.
 
-<span style="color:darkred">Abweichung: Geöffnet wird die Benutzerdokumentation des Original-Package-Handlers (PDF im Projektordner) bzw. deren Markdown-Fassung, nicht diese Dokumentation.</span>
+Der Befehl öffnet diese Benutzerdokumentation von Package Turbo.
 
 #### 19.1.2 Informationen zur Tastenbelegung
 
@@ -977,4 +1133,4 @@ Objekte werden mit farbigen Kürzeln gekennzeichnet:
 | **O** | Ordner |
 | **N** | Objekt mit Notiz |
 
-<span style="color:darkred">Abweichung: Statt der Icons des Originals werden farbige Textkürzel verwendet. Die Register *Überblick*, *Statistik* und *Validierung* haben kein eigenes Symbol.</span>
+Farbige Textkürzel kennzeichnen die Objekttypen. Die Register *Überblick*, *Statistik* und *Validierung* haben kein eigenes Symbol.

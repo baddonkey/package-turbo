@@ -8,8 +8,7 @@ TIME_SPAN = "timespan"
 TIME_POINT = "timepoint"
 READONLY = "readonly"
 
-# Vorgänge and Aktivitäten are shown but may not be edited (user documentation chapter 11).
-READ_ONLY_KINDS = {"vorgang", "aktivitaet"}
+READ_ONLY_KINDS: set[str] = set()
 
 
 @dataclass(frozen=True)
@@ -38,7 +37,7 @@ KIND_LABELS = {
     "archivischerVorgang": "Archivischer Vorgang",
 }
 
-# Editor tabs in the order of the original application; "dossier" also hosts subdossiers.
+# "dossier" also hosts subdossiers.
 EDITOR_TABS = [
     ("ueberblick", "Überblick"),
     ("statistik", "Statistik"),
@@ -245,9 +244,9 @@ KIND_HELP = {
     "ordnungssystemposition": "Nummer und Titel der Ordnungssystemposition sowie Angaben aus dem vorarchivischen Bereich.",
     "dossier": "Titel und Identifikationsmerkmale des Dossiers, Entstehungszeitraum und Schutzfristen.",
     "dokument": "Titel und Identifikationsmerkmale des Dokuments, Entstehungszeitraum und Anwendung.",
-    "vorgang": "Geschäftsvorfall mit Auftragsbeschreibung und Federführung (nur Anzeige).",
-    "aktivitaet": "Tätigkeit innerhalb eines Vorgangs mit Verantwortlichkeit und Terminierung (nur Anzeige).",
-    "mappe": "Bezeichnung und Inhalt der Mappe. Mappen werden vom BAR nicht zugelassen.",
+    "vorgang": "Geschäftsvorfall mit Auftragsbeschreibung und Federführung.",
+    "aktivitaet": "Tätigkeit innerhalb eines Vorgangs mit Verantwortlichkeit und Terminierung.",
+    "mappe": "Bezeichnung und Inhalt der Mappe. Zulässige Unterobjekte richten sich nach dem Paket-Schema.",
     "datei": "Name der Datei im Paket, Originalname im Ursprungssystem und technische Angaben.",
     "ordner": "Name des Ordners im Paket und in der Originalstruktur.",
 }

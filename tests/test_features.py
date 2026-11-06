@@ -9,6 +9,180 @@ from ph_backend.sip import SipPackage
 from ph_backend.validation import Validator
 
 
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+@pytest.mark.parametrize("delivery_type", ["GEVER", "FILES"])
+def test_repeated_authors_preserve_order_and_roundtrip(tmp_path, version, delivery_type):
+    from ph_backend import package_factory, structure
+
+    pkg = package_factory.create_package(tmp_path, "SIP_20261105_Test_Repeated", "Test",
+                                         version=version, delivery_type=delivery_type)
+    dossier = structure.add_objects(pkg, next(pkg.iter_kind("ordnungssystemposition")), "dossier")[0]
+    document = structure.add_objects(pkg, dossier, "dokument")[0]
+    pkg.set_repeated_texts(document, "autor", ["First author", "Second author"])
+    assert pkg.repeated_texts(document, "autor") == ["First author", "Second author"]
+    editor = MetadataEditor()
+    editor.set_package(pkg)
+    editor.showElement(pkg.key(document))
+    field = next(field for section in editor.sections for field in section["more"] if field["tag"] == "autor")
+    assert field["type"] == "repeated" and field["values"] == ["First author", "Second author"]
+    errors = []
+    editor.inputError.connect(errors.append)
+    editor.setField(pkg.key(document), "autor", "Must not collapse")
+    assert errors and len(pkg.children(document, "autor")) == 2
+    editor.setRepeatedField(pkg.key(document), "autor", ["Changed author", "Second author", "Third author"])
+    assert pkg.repeated_texts(document, "autor") == ["Changed author", "Second author", "Third author"]
+    assert not [issue for issue in Validator(pkg).run(full=False) if issue["checkId"] == "schema"]
+    pkg.save()
+    reopened = SipPackage.open_folder(pkg.root_dir)
+    assert reopened.repeated_texts(next(reopened.iter_kind("dokument")), "autor") == ["Changed author", "Second author", "Third author"]
+
+
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+@pytest.mark.parametrize("delivery_type", ["GEVER", "FILES"])
+def test_reference_attributes_follow_version_without_changing_assignments(tmp_path, version, delivery_type):
+    from ph_backend import files, package_factory, structure
+
+    pkg = package_factory.create_package(tmp_path, "SIP_20261105_Test_References", "Test",
+                                         version=version, delivery_type=delivery_type)
+    content = next(element for element in pkg.iter_kind("ordner") if pkg.text(element, "name") == "content")
+    source = tmp_path / "reference.txt"
+    source.write_bytes(b"reference bytes")
+    files.import_paths(pkg, content, [source])
+    file_element = next(element for element in pkg.children(content, "datei"))
+    dossier = structure.add_objects(pkg, next(pkg.iter_kind("ordnungssystemposition")), "dossier")[0]
+    document = structure.add_objects(pkg, dossier, "dokument")[0]
+    structure.assign_files(pkg, document, [file_element])
+    before = pkg.referenced_ids()
+    details = pkg.reference_attributes(document)
+    editor = MetadataEditor()
+    editor.set_package(pkg)
+    errors = []
+    editor.inputError.connect(errors.append)
+    if version in ("1.0", "1.1"):
+        assert details[0]["attributes"] == []
+        editor.setReferenceAttribute(pkg.key(document), 0, "version", "1")
+        assert errors and not pkg.children(document, "dateiRef")[0].attrib
+    else:
+        assert {attribute["name"] for attribute in details[0]["attributes"]} == {
+            "version", "repraesentation", "information", "reihung"}
+        for name, value in (("version", "2"), ("repraesentation", "master"), ("information", "original"), ("reihung", "1")):
+            editor.setReferenceAttribute(pkg.key(document), 0, name, value)
+        reference = pkg.children(document, "dateiRef")[0]
+        assert reference.get("version") == "2" and reference.text == file_element.get("id")
+        editor.setReferenceAttribute(pkg.key(document), 0, "information", "")
+        assert "information" not in reference.attrib and reference.get("version") == "2"
+    assert pkg.referenced_ids() == before
+    assert not [issue for issue in Validator(pkg).run(full=False) if issue["checkId"] == "schema"]
+    pkg.save()
+    reopened = SipPackage.open_folder(pkg.root_dir)
+    assert reopened.referenced_ids() == before
+    if version in ("1.2", "1.3"):
+        assert next(reopened.iter_kind("dateiRef")).get("repraesentation") == "master"
+
+
+def test_v13_datei_ref_supports_multiple_file_ids(tmp_path):
+    from ph_backend import files, package_factory, structure
+
+    pkg = package_factory.create_package(tmp_path, "SIP_20261105_Test_MultiRef", "Test",
+                                         version="1.3", delivery_type="FILES")
+    content = next(element for element in pkg.iter_kind("ordner") if pkg.text(element, "name") == "content")
+    sources = []
+    for name in ("first.txt", "second.txt"):
+        source = tmp_path / name
+        source.write_text(name, encoding="utf-8")
+        sources.append(source)
+    files.import_paths(pkg, content, sources)
+    file_elements = list(pkg.children(content, "datei"))
+    dossier = structure.add_objects(pkg, next(pkg.iter_kind("ordnungssystemposition")), "dossier")[0]
+    document = structure.add_objects(pkg, dossier, "dokument")[0]
+    structure.assign_files(pkg, document, file_elements[:1])
+    reference = pkg.children(document, "dateiRef")[0]
+    reference.text = " ".join(file_element.get("id") for file_element in file_elements)
+
+    assert pkg.referenced_ids() == {file_element.get("id") for file_element in file_elements}
+    assert pkg.referenced_files(document) == file_elements
+    assert pkg.reference_attributes(document)[0]["name"] == "first.txt, second.txt"
+    found = {issue["checkId"] for issue in Validator(pkg).run(full=True)}
+    assert not found & {"schema", "unassigned_files"}
+
+
+@pytest.mark.parametrize(("version", "required"), [("1.0", True), ("1.3", False)])
+def test_dictionary_required_fields_are_shown_in_editor(tmp_path, version, required):
+    from ph_backend import package_factory, structure
+
+    pkg = package_factory.create_package(tmp_path, f"SIP_20261106_Test_RequiredUI_{version}", "Test",
+                                         version=version, delivery_type="FILES")
+    editor = MetadataEditor()
+    editor.set_package(pkg)
+    editor.showElement(pkg.key(pkg.provenance))
+    provenance_fields = {field["tag"]: field for section in editor.sections
+                         for group in ("primary", "more") for field in section[group]}
+    assert provenance_fields["systemName"]["required"] is required
+    assert provenance_fields["systemBeschreibung"]["required"] is required
+
+    if version == "1.3":
+        dossier = structure.add_objects(pkg, next(pkg.iter_kind("ordnungssystemposition")), "dossier")[0]
+        pkg.set_time_span(dossier, "entstehungszeitraum", "ca. 2000", "2001")
+        editor.showElement(pkg.key(dossier))
+        dossier_fields = {field["tag"]: field for section in editor.sections
+                          for group in ("primary", "more") for field in section[group]}
+        assert dossier_fields["entstehungszeitraumAnmerkung"]["required"]
+
+
+def test_repeated_row_reordering_preserves_element_attributes(sip_dir):
+    pkg = SipPackage.open_folder(sip_dir)
+    document = next(pkg.iter_kind("dokument"))
+    pkg.set_repeated_texts(document, "autor", ["First", "Second"])
+    first, second = pkg.children(document, "autor")
+    first.set("{urn:vendor}source", "first-source")
+    second.set("{urn:vendor}source", "second-source")
+    editor = MetadataEditor()
+    editor.set_package(pkg)
+    editor.setRepeatedField(pkg.key(document), "autor", [{"value": "Second", "sourceIndex": 1},
+                                                         {"value": "Changed first", "sourceIndex": 0}])
+    assert pkg.children(document, "autor") == [second, first]
+    assert second.get("{urn:vendor}source") == "second-source"
+    editor.setRepeatedField(pkg.key(document), "autor", [{"value": "Changed first", "sourceIndex": 1}])
+    assert pkg.children(document, "autor") == [first]
+    assert first.get("{urn:vendor}source") == "first-source"
+
+
+def test_scalar_bulk_edit_cannot_overwrite_repeated_authors(sip_dir):
+    from ph_backend import structure
+
+    pkg = SipPackage.open_folder(sip_dir)
+    document = next(pkg.iter_kind("dokument"))
+    pkg.set_repeated_texts(document, "autor", ["First", "Second"])
+    assert "autor" not in {field["tag"] for field in structure.mass_edit_fields("dokument", pkg)}
+    with pytest.raises(structure.StructureError, match="lists"):
+        structure.mass_edit(pkg, pkg.classification_system, "dokument", "autor", "Not a list")
+    assert pkg.repeated_texts(document, "autor") == ["First", "Second"]
+
+
+def test_repeated_values_preserve_multiline_content(sip_dir):
+    pkg = SipPackage.open_folder(sip_dir)
+    document = next(pkg.iter_kind("dokument"))
+    editor = MetadataEditor()
+    editor.set_package(pkg)
+    editor.setRepeatedField(pkg.key(document), "autor", ["First line\nSecond line", "Other author"])
+    assert pkg.repeated_texts(document, "autor") == ["First line\nSecond line", "Other author"]
+
+
+def test_help_uses_package_turbo_user_guide():
+    from main import _manual_paths
+
+    paths = _manual_paths()
+    assert len(paths) == 1
+    assert paths[0].is_file()
+    assert paths[0].parent.name == "user-guide"
+    assert paths[0].name == "Benutzerdokumentation.md"
+    guide = paths[0].read_text(encoding="utf-8")
+    for comparison in ("color:darkred", "Abweichung:", "Wie im Original", "Package Handler", "Package-Handler"):
+        assert comparison not in guide
+    assert "Dateisystemänderungen" in guide
+    assert "Rückgängig" in guide
+
+
 def test_additional_data_on_all_allowed_objects(sample_sip):
     pkg = SipPackage.open_folder(sample_sip)
     info = xsd_info.for_package(pkg)

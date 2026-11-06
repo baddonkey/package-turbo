@@ -16,7 +16,7 @@ Dialog {
     anchors.centerIn: Overlay.overlay
     width: 620
     modal: true
-    standardButtons: Dialog.Cancel
+    standardButtons: Dialog.NoButton
 
     function suggest() {
         if (!nameEdited)
@@ -27,6 +27,7 @@ Dialog {
         nameEdited = false
         csvFile = ""
         csvCheck.checked = false
+        versionBox.currentIndex = 0
         suggest()
     }
 
@@ -36,7 +37,15 @@ Dialog {
         columnSpacing: 8
 
         Label { text: qsTr("XSD-Version") }
-        Label { text: packageCtl.xsdVersion; Layout.columnSpan: 2 }
+        ComboBox {
+            id: versionBox
+            objectName: "schemaVersionBox"
+            model: packageCtl.xsdVersions
+            textRole: "label"
+            valueRole: "version"
+            Layout.columnSpan: 2
+            Layout.fillWidth: true
+        }
 
         Label { text: qsTr("Ablieferungstyp") }
         ComboBox { id: typeBox; model: ["GEVER", "FILES"]; Layout.columnSpan: 2 }
@@ -61,7 +70,7 @@ Dialog {
             onTextEdited: root.nameEdited = true
             color: root.nameError ? "#c62828" : palette.text
         }
-        Item { width: 1 }
+        Item { width: 1; visible: root.nameError.length > 0 }
         Label {
             Layout.columnSpan: 2
             Layout.fillWidth: true
@@ -71,9 +80,9 @@ Dialog {
             wrapMode: Text.Wrap
         }
 
-        Label { text: qsTr("Speicherort *") }
-        TextField { Layout.fillWidth: true; readOnly: true; text: decodeURIComponent(root.location.toString().replace("file:///", "")) }
-        Button { text: qsTr("Durchsuchen..."); onClicked: locationDialog.open() }
+        Label { objectName: "locationLabel"; text: qsTr("Speicherort *") }
+        TextField { objectName: "locationField"; Layout.fillWidth: true; readOnly: true; text: decodeURIComponent(root.location.toString().replace("file:///", "")) }
+        Button { objectName: "locationBrowse"; text: qsTr("Durchsuchen..."); onClicked: locationDialog.open() }
 
         CheckBox { id: csvCheck; text: qsTr("Struktur aus CSV importieren"); Layout.columnSpan: 3 }
         Label { text: qsTr("CSV-Datei"); enabled: csvCheck.checked }
@@ -98,7 +107,8 @@ Dialog {
     }
 
     onAccepted: packageCtl.createPackage(location, nameField.text, officeField.text, typeBox.currentText,
-                                         creatorField.text, systemField.text, csvCheck.checked ? csvFile : "")
+                                         creatorField.text, systemField.text, csvCheck.checked ? csvFile : "",
+                                         versionBox.currentValue)
 
     FolderDialog {
         id: locationDialog

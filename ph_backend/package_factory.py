@@ -9,12 +9,12 @@ from lxml import etree
 
 from . import files, structure
 from .sip import SipPackage
-from .xsd_info import BUNDLED_XSD_DIR
+from .xsd_info import LATEST_RELEASE, schema_release
 
 ARELDA_NS = "http://bar.admin.ch/arelda/v4"
 XSI_NS = "http://www.w3.org/2001/XMLSchema-instance"
-SCHEMA_VERSION = "5.0"
-XSD_VERSION_LABEL = "eCH-0160 v1.2 (arelda v4, Schema-Version 5.0)"
+SCHEMA_VERSION = schema_release(LATEST_RELEASE)[0]
+XSD_VERSION_LABEL = f"eCH-0160 v{LATEST_RELEASE} (arelda v4, Schema-Version {SCHEMA_VERSION})"
 SIP_NAME = re.compile(r"^SIP_\d{8}_[A-Za-z0-9.\-]+(_[A-Za-z0-9_.\-]+)?$")
 
 
@@ -45,11 +45,12 @@ def _sub(parent, tag: str, text: str | None = None):
     return el
 
 
-def _metadata(delivery_type: str, delivering_office: str, creator: str, system_name: str) -> etree._ElementTree:
+def _metadata(delivery_type: str, delivering_office: str, creator: str, system_name: str,
+              schema_version: str = SCHEMA_VERSION) -> etree._ElementTree:
     root = etree.Element(f"{{{ARELDA_NS}}}paket", nsmap={None: ARELDA_NS, "xsi": XSI_NS})
     root.set(f"{{{XSI_NS}}}schemaLocation", f"{ARELDA_NS} xsd/arelda.xsd")
     root.set(f"{{{XSI_NS}}}type", "paketSIP")
-    root.set("schemaVersion", SCHEMA_VERSION)
+    root.set("schemaVersion", schema_version)
     _sub(root, "paketTyp", "SIP")
     toc = _sub(root, "inhaltsverzeichnis")
     header = _sub(toc, "ordner")
@@ -77,8 +78,14 @@ def _metadata(delivery_type: str, delivering_office: str, creator: str, system_n
 
 def create_package(parent_dir: str | Path, name: str, delivering_office: str, delivery_type: str = "GEVER",
                    creator: str = "", system_name: str = "Ordnungssystem", csv_path: str | Path | None = None,
-                   validate_sip_name: bool = True) -> SipPackage:
+                   validate_sip_name: bool = True, version: str = LATEST_RELEASE) -> SipPackage:
     check_name(name, validate_sip_name)
+    try:
+        schema_version, schema_dir = schema_release(version)
+    except ValueError as exc:
+        raise PackageCreationError(str(exc)) from exc
+    if delivery_type.upper() not in ("GEVER", "FILES"):
+        raise PackageCreationError(f"Unsupported delivery type: {delivery_type}")
     if not delivering_office.strip():
         raise PackageCreationError("Die abliefernde Stelle muss angegeben werden.")
     target = Path(parent_dir) / name
@@ -88,9 +95,10 @@ def create_package(parent_dir: str | Path, name: str, delivering_office: str, de
     xsd_dir.mkdir(parents=True)
     (target / "content").mkdir()
     try:
-        for xsd in sorted(BUNDLED_XSD_DIR.glob("*.xsd")):
+        for xsd in sorted(schema_dir.glob("*.xsd")):
             shutil.copy2(xsd, xsd_dir / xsd.name)
-        tree = _metadata(delivery_type, delivering_office.strip(), creator.strip(), system_name.strip() or "Ordnungssystem")
+        tree = _metadata(delivery_type, delivering_office.strip(), creator.strip(),
+                         system_name.strip() or "Ordnungssystem", schema_version)
         tree.write(str(target / "header" / "metadata.xml"), encoding="UTF-8", xml_declaration=True, pretty_print=True)
 
         pkg = SipPackage.open_folder(target)

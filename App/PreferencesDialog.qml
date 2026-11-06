@@ -17,6 +17,30 @@ Dialog {
         spacing: 8
 
         GroupBox {
+            title: qsTr("Metadaten-Historie")
+            Layout.fillWidth: true
+            ColumnLayout {
+                anchors.fill: parent
+                RowLayout {
+                    Label { text: qsTr("Bearbeitet durch") }
+                    TextField { id: auditOperatorField; objectName: "auditOperatorField"; Layout.fillWidth: true }
+                }
+                RowLayout {
+                    Label { text: qsTr("Arbeitskopie-Limit (GiB)") }
+                    SpinBox { id: workspaceLimit; objectName: "workspaceLimit"; from: 1; to: 1024; editable: true }
+                }
+                RowLayout {
+                    Label { text: qsTr("Sicherungskopien behalten") }
+                    SpinBox { id: retentionCopies; objectName: "retentionCopies"; from: 1; to: 100; editable: true }
+                }
+                RowLayout {
+                    Label { text: qsTr("Mindestalter (Tage)") }
+                    SpinBox { id: retentionAge; objectName: "retentionAge"; from: 0; to: 3650; editable: true }
+                }
+            }
+        }
+
+        GroupBox {
             title: qsTr("Validierung")
             Layout.fillWidth: true
             CheckBox { id: sipNameCheck; text: qsTr("SIP-Namen validieren") }
@@ -75,6 +99,10 @@ Dialog {
     }
 
     onOpened: {
+        auditOperatorField.text = backend.auditOperator
+        workspaceLimit.value = backend.workspaceLimitGiB
+        retentionCopies.value = backend.retentionCopies
+        retentionAge.value = backend.retentionAgeDays
         sipNameCheck.checked = backend.validateSipName
         thresholdSpin.value = backend.expandThreshold
         hitsSpin.value = backend.maxSearchHits
@@ -84,6 +112,10 @@ Dialog {
         languageBox.currentIndex = backend.language === "fr" ? 1 : 0
     }
     onAccepted: {
+        backend.auditOperator = auditOperatorField.text
+        backend.workspaceLimitGiB = workspaceLimit.value
+        backend.retentionCopies = retentionCopies.value
+        backend.retentionAgeDays = retentionAge.value
         backend.validateSipName = sipNameCheck.checked
         backend.expandThreshold = thresholdSpin.value
         backend.maxSearchHits = hitsSpin.value

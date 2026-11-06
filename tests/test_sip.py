@@ -64,6 +64,16 @@ def test_time_span_roundtrip(sip_dir):
     assert pkg.time_span_display(dossier, "entstehungszeitraum") == ("2001", "2002")
 
 
+def test_unknown_schema_version_is_read_only(sip_dir):
+    pkg = SipPackage.open_folder(sip_dir)
+    pkg.root.set("schemaVersion", "99.0")
+    pkg.save()
+    unknown = SipPackage.open_folder(sip_dir)
+    assert unknown.read_only and not unknown.version_supported
+    with pytest.raises(PermissionError):
+        unknown.save()
+
+
 def test_save_rejected_when_read_only(sip_dir):
     pkg = SipPackage.open_folder(sip_dir, read_only=True)
     with pytest.raises(PermissionError):

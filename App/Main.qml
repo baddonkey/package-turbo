@@ -24,11 +24,27 @@ ApplicationWindow {
     // ---------------------------------------------------------------- helpers
 
     function guarded(action) {
+        if (backend.busy)
+            return
+        window.contentItem.forceActiveFocus()
+        Qt.callLater(() => guardedReady(action))
+    }
+
+    function guardedReady(action) {
+        if (backend.busy)
+            return
         pendingAction = action
         if (backend.dirty)
             unsavedDialog.open()
         else
             proceedAfterSave()
+    }
+
+    function savePackage() {
+        if (backend.busy)
+            return
+        window.contentItem.forceActiveFocus()
+        Qt.callLater(() => backend.save())
     }
 
     function proceedAfterSave() {
@@ -94,6 +110,11 @@ ApplicationWindow {
     }
 
     onClosing: function (close) {
+        if (backend.busy) {
+            close.accepted = false
+            backend.cancelTask()
+            return
+        }
         layoutSettings.leftWidth = leftPane.width
         layoutSettings.classificationHeight = classificationNavigator.height
         layoutSettings.actionsHeight = actionPane.height
@@ -128,7 +149,7 @@ ApplicationWindow {
             Action { text: qsTr("Paket schreibgeschützt öffnen..."); onTriggered: guarded(() => { openFolderDialog.readOnly = true; openFolderDialog.open() }) }
             Action { text: qsTr("metadata.xml öffnen..."); onTriggered: guarded(() => openMetadataDialog.open()) }
             MenuSeparator {}
-            Action { text: qsTr("Speichern"); shortcut: StandardKey.Save; enabled: backend.dirty && !backend.readOnly; onTriggered: backend.save() }
+            Action { text: qsTr("Speichern"); shortcut: StandardKey.Save; enabled: backend.hasPackage && !backend.readOnly && !backend.busy; onTriggered: window.savePackage() }
             Action { text: qsTr("Paket zippen..."); enabled: backend.hasSip; onTriggered: zipDialog.open() }
             Action { text: qsTr("metadata.xml exportieren..."); enabled: backend.hasPackage; onTriggered: exportXmlDialog.open() }
             MenuSeparator {}
@@ -167,7 +188,39 @@ ApplicationWindow {
         }
         Menu {
             title: qsTr("&Bearbeiten")
-            Action { text: qsTr("Rückgängig"); shortcut: StandardKey.Undo; onTriggered: { const t = window.textTarget(); if (t) t.undo() } }
+            Action {
+                id: undoAction
+                objectName: "undoAction"
+                text: qsTr("Rückgängig")
+                shortcut: StandardKey.Undo
+                enabled: backend.canUndo || !!(window.textTarget() && window.textTarget().canUndo)
+                onTriggered: {
+                    const target = window.textTarget()
+                    if (target && target.canUndo)
+                        target.undo()
+                    else
+                        backend.undo()
+                }
+            }
+            Action {
+                id: redoAction
+                objectName: "redoAction"
+                text: qsTr("Wiederholen")
+                shortcut: StandardKey.Redo
+                enabled: backend.canRedo || !!(window.textTarget() && window.textTarget().canRedo)
+                onTriggered: {
+                    const target = window.textTarget()
+                    if (target && target.canRedo)
+                        target.redo()
+                    else
+                        backend.redo()
+                }
+            }
+            Action {
+                text: qsTr("Paket-Verlauf leeren...")
+                enabled: backend.canUndo || backend.canRedo
+                onTriggered: window.confirm(qsTr("Undo/Redo-Schnappschüsse für dieses Paket entfernen?"), () => backend.clearUndoHistory())
+            }
             MenuSeparator {}
             Action { text: qsTr("Ausschneiden"); shortcut: StandardKey.Cut; onTriggered: { const t = window.textTarget(); if (t) t.cut() } }
             Action { text: qsTr("Kopieren"); shortcut: StandardKey.Copy; onTriggered: { const t = window.textTarget(); if (t) t.copy() } }
@@ -218,7 +271,7 @@ ApplicationWindow {
             Menu {
                 title: qsTr("Normalisierung")
                 enabled: backend.hasSip && !backend.readOnly
-                Action { text: qsTr("Datei- und Ordnernamen normalisieren..."); onTriggered: window.confirm(qsTr("Unerlaubte Zeichen in allen Datei- und Ordnernamen ersetzen? Das Paket wird anschliessend gespeichert."), () => fileOps.normalize("names")) }
+                Action { text: qsTr("Datei- und Ordnernamen normalisieren..."); onTriggered: window.confirm(qsTr("Unerlaubte Zeichen in allen Datei- und Ordnernamen der Arbeitskopie ersetzen?"), () => fileOps.normalize("names")) }
                 Action { text: qsTr("Pfadlängen bereinigen..."); onTriggered: window.confirm(qsTr("Alle Ordner (O1, O2, ...) und Dateien (P1, P2, ...) umbenennen? Die Originalnamen bleiben in den Metadaten erhalten."), () => fileOps.normalize("paths")) }
                 Action { text: qsTr("Datei- und Ordnernamen denormalisieren..."); onTriggered: window.confirm(qsTr("Alle Datei- und Ordnernamen auf die Originalnamen zurücksetzen?"), () => fileOps.normalize("undo")) }
             }
@@ -241,7 +294,29 @@ ApplicationWindow {
 
             ToolButton { text: qsTr("Neues Paket"); onClicked: guarded(() => newPackageDialog.open()) }
             ToolButton { text: qsTr("Paket öffnen"); onClicked: guarded(() => { openFolderDialog.readOnly = false; openFolderDialog.open() }) }
-            ToolButton { text: qsTr("Speichern"); enabled: backend.dirty && !backend.readOnly; onClicked: backend.save() }
+            ToolButton { objectName: "savePackageButton"; text: qsTr("Speichern"); enabled: backend.hasPackage && !backend.readOnly && !backend.busy; onClicked: window.savePackage() }
+            ToolButton {
+                objectName: "packageUndoButton"
+                text: "\u21B6"
+                implicitWidth: 32
+                implicitHeight: 32
+                font.pixelSize: 18
+                enabled: backend.canUndo
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Paket rückgängig: %1").arg(backend.undoLabel)
+                onClicked: backend.undo()
+            }
+            ToolButton {
+                objectName: "packageRedoButton"
+                text: "\u21B7"
+                implicitWidth: 32
+                implicitHeight: 32
+                font.pixelSize: 18
+                enabled: backend.canRedo
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Paket wiederholen: %1").arg(backend.redoLabel)
+                onClicked: backend.redo()
+            }
             ToolButton { text: qsTr("Paket schliessen"); enabled: backend.hasPackage; onClicked: guarded(() => backend.closePackage()) }
             ToolSeparator {}
             ToolButton {
@@ -430,6 +505,7 @@ ApplicationWindow {
                     TabButton { text: qsTr("Stichprobe") }
                     TabButton { text: qsTr("Suche") }
                     TabButton { text: qsTr("Änderungen") + (changesTable.total > 0 ? " (" + changesTable.total + ")" : "") }
+                    TabButton { text: qsTr("Metadaten-Historie") + (historyTable.total > 0 ? " (" + historyTable.total + ")" : "") }
                 }
 
                 StackLayout {
@@ -475,6 +551,13 @@ ApplicationWindow {
                             onRowActivated: function (row) { backend.reveal(changesTable.recordAt(row).key) }
                         }
                     }
+                    HistoryView {
+                        onCleanupRequested: storageCleanupDialog.open()
+                        onDetailsRequested: function(text) {
+                            eventDetails.text = text
+                            eventDialog.open()
+                        }
+                    }
                 }
             }
         }
@@ -496,7 +579,8 @@ ApplicationWindow {
         function create(tag, many) {
             const target = key
             const label = { ordnungssystemposition: qsTr("Ordnungssystempositionen"), dossier: qsTr("Dossiers"),
-                            dokument: qsTr("Dokumente"), mappe: qsTr("Mappen") }[tag]
+                            dokument: qsTr("Dokumente"), mappe: qsTr("Mappen"), vorgang: qsTr("Vorgänge"),
+                            aktivitaet: qsTr("Aktivitäten") }[tag]
             if (many)
                 inputDialog.ask(qsTr("Mehrere neue %1").arg(label), qsTr("Anzahl"), "", n => structure.addObjects(target, tag, n), { numeric: true, number: 2 })
             else
@@ -521,6 +605,8 @@ ApplicationWindow {
         MenuItem { text: qsTr("Neues Dokument"); enabled: classificationMenu.writable && classificationMenu.allowed.indexOf("dokument") >= 0; onTriggered: classificationMenu.create("dokument", false) }
         MenuItem { text: qsTr("Mehrere neue Dokumente..."); enabled: classificationMenu.writable && classificationMenu.allowed.indexOf("dokument") >= 0; onTriggered: classificationMenu.create("dokument", true) }
         MenuItem { text: qsTr("Neue Mappe"); enabled: classificationMenu.writable && classificationMenu.allowed.indexOf("mappe") >= 0; onTriggered: classificationMenu.create("mappe", false) }
+        MenuItem { objectName: "newProcessAction"; text: qsTr("Neuer Vorgang"); enabled: classificationMenu.writable && classificationMenu.allowed.indexOf("vorgang") >= 0; onTriggered: classificationMenu.create("vorgang", false) }
+        MenuItem { objectName: "newActivityAction"; text: qsTr("Neue Aktivität"); enabled: classificationMenu.writable && classificationMenu.allowed.indexOf("aktivitaet") >= 0; onTriggered: classificationMenu.create("aktivitaet", false) }
         MenuSeparator {}
         MenuItem { text: qsTr("Neues Dokument für diese Datei"); enabled: classificationMenu.writable && classificationMenu.kind === "datei" && classificationMenu.owner > 0; onTriggered: structure.documentForFile(classificationMenu.owner, classificationMenu.key) }
         MenuItem { text: qsTr("Neue Dokumente für die enthaltenen Dateien"); enabled: classificationMenu.writable && (classificationMenu.kind === "dossier" || classificationMenu.kind === "subdossier"); onTriggered: structure.documentsForFiles(classificationMenu.key) }
@@ -537,7 +623,7 @@ ApplicationWindow {
         }
         MenuItem { text: qsTr("Zuweisung löschen"); enabled: classificationMenu.writable && classificationMenu.kind === "datei" && classificationMenu.owner > 0; onTriggered: classificationMenu.deleteSelection() }
         MenuSeparator {}
-        MenuItem { text: qsTr("Ausschneiden (Verschieben)"); enabled: classificationMenu.writable && ["ordnungssystemposition", "dossier", "subdossier", "dokument", "mappe"].indexOf(classificationMenu.kind) >= 0; onTriggered: structure.cut(classificationNavigator.selectedKeys()) }
+        MenuItem { text: qsTr("Ausschneiden (Verschieben)"); enabled: classificationMenu.writable && ["ordnungssystemposition", "dossier", "subdossier", "dokument", "mappe", "vorgang", "aktivitaet"].indexOf(classificationMenu.kind) >= 0; onTriggered: structure.cut(classificationNavigator.selectedKeys()) }
         MenuItem { text: qsTr("Einfügen (%1 Objekt(e))").arg(structure.cutCount); enabled: classificationMenu.writable && structure.cutCount > 0; onTriggered: structure.paste(classificationMenu.key) }
         MenuItem { text: qsTr("Nach oben"); enabled: classificationMenu.writable && classificationMenu.kind !== "ordnungssystem" && classificationMenu.kind !== "datei"; onTriggered: structure.moveRelative(classificationMenu.key, -1) }
         MenuItem { text: qsTr("Nach unten"); enabled: classificationMenu.writable && classificationMenu.kind !== "ordnungssystem" && classificationMenu.kind !== "datei"; onTriggered: structure.moveRelative(classificationMenu.key, 1) }
@@ -574,7 +660,7 @@ ApplicationWindow {
 
         function deleteSelection() {
             const keys = packageNavigator.selectedKeys()
-            window.confirm(qsTr("%1 Ordner/Datei(en) endgültig aus dem Paket und dem Dateisystem löschen?").arg(keys.length),
+            window.confirm(qsTr("%1 Ordner/Datei(en) aus der Arbeitskopie entfernen?").arg(keys.length),
                            () => fileOps.deleteEntries(keys))
         }
 
@@ -635,6 +721,10 @@ ApplicationWindow {
         }
         function onValidityPrompt() {
             validityDialog.open()
+        }
+        function onAuditOperatorRequired() {
+            inputDialog.ask(qsTr("Identität bestätigen"), qsTr("Bearbeitet durch"), backend.auditOperator,
+                            name => { backend.auditOperator = name })
         }
     }
 
@@ -722,6 +812,27 @@ ApplicationWindow {
     MassAssignDialog { id: massAssignDialog; objectName: "massAssignDialog" }
     MassEditDialog { id: massEditDialog; objectName: "massEditDialog" }
     PreferencesDialog { id: preferencesDialog; objectName: "preferencesDialog" }
+    StorageCleanupDialog { id: storageCleanupDialog; objectName: "storageCleanupDialog" }
+
+    Dialog {
+        id: eventDialog
+        objectName: "eventDialog"
+        title: qsTr("Ereignisdetails")
+        anchors.centerIn: Overlay.overlay
+        width: Math.min(720, window.width - 40)
+        height: Math.min(520, window.height - 40)
+        modal: true
+        standardButtons: Dialog.Close
+        ScrollView {
+            anchors.fill: parent
+            TextArea {
+                id: eventDetails
+                readOnly: true
+                selectByMouse: true
+                wrapMode: TextEdit.Wrap
+            }
+        }
+    }
 
     Dialog {
         id: renumberDialog; objectName: "renumberDialog"
@@ -781,8 +892,8 @@ ApplicationWindow {
         text: qsTr("Alle Fehler sind behoben. Soll das Paket gespeichert und erneut vollständig validiert werden?")
         buttons: MessageDialog.Ok | MessageDialog.Cancel
         onAccepted: {
-            if (!backend.readOnly)
-                backend.save()
+            if (!backend.readOnly && !backend.save())
+                return
             backend.validate(true)
         }
     }
@@ -797,7 +908,8 @@ ApplicationWindow {
                 if (backend.save())
                     window.proceedAfterSave()
             } else if (button === MessageDialog.Discard) {
-                window.proceedAfterSave()
+                if (backend.discardChanges())
+                    window.proceedAfterSave()
             } else {
                 window.pendingAction = null
             }
@@ -825,8 +937,14 @@ ApplicationWindow {
             anchors.fill: parent
             spacing: 12
             Label { text: backend.status; Layout.fillWidth: true; wrapMode: Text.Wrap }
-            ProgressBar { Layout.fillWidth: true; from: 0; to: 100; value: backend.progress }
-            Button { text: qsTr("Abbrechen"); Layout.alignment: Qt.AlignHCenter; onClicked: backend.cancelTask() }
+            ProgressBar { Layout.fillWidth: true; from: 0; to: 100; value: backend.progress; indeterminate: backend.totalBytes === 0 && backend.busy }
+            Label {
+                Layout.fillWidth: true
+                visible: backend.totalBytes > 0
+                text: qsTr("%1 / %2 Byte").arg(backend.completedBytes).arg(backend.totalBytes)
+                elide: Text.ElideRight
+            }
+            Button { objectName: "cancelTaskButton"; text: qsTr("Abbrechen"); enabled: backend.canCancelTask; Layout.alignment: Qt.AlignHCenter; onClicked: backend.cancelTask() }
         }
     }
 
