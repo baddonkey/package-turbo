@@ -88,6 +88,40 @@ def test_primary_data_under_header_is_rejected(tmp_path, version):
 
 
 @pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+@pytest.mark.parametrize("delivery_type", ["GEVER", "FILES"])
+def test_primary_data_must_be_under_content(tmp_path, version, delivery_type):
+    from ph_backend import files, package_factory
+
+    pkg = package_factory.create_package(
+        tmp_path, f"SIP_20261107_Test_PrimaryLocation_{version}_{delivery_type}", "Test",
+        version=version, delivery_type=delivery_type)
+    relevant = {"illegal_entries", "header_content"}
+
+    def location_issues():
+        return [issue for issue in Validator(pkg).run(full=True) if issue["checkId"] in relevant]
+
+    content_payload = pkg.file_root / "content" / "primary.txt"
+    content_payload.write_text("primary content", encoding="utf-8")
+    files.add_to_table_of_contents(pkg, "content/primary.txt")
+    assert not location_issues()
+
+    content_payload.unlink()
+    root_payload = pkg.file_root / "primary.txt"
+    root_payload.write_text("primary content", encoding="utf-8")
+    root_issues = location_issues()
+    assert any(issue["checkId"] == "illegal_entries" and issue["value"] == "primary.txt"
+               and issue["severity"] == ERROR for issue in root_issues)
+    root_payload.unlink()
+
+    header_payload = pkg.file_root / "header" / "xsd" / "primary.pdf"
+    header_payload.write_bytes(b"primary content")
+    files.add_to_table_of_contents(pkg, "header/xsd/primary.pdf")
+    header_issues = location_issues()
+    assert any(issue["checkId"] == "header_content" and issue["value"] == "header/xsd/primary.pdf"
+               and issue["severity"] == ERROR for issue in header_issues)
+
+
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
 def test_toc_completeness_for_each_release(tmp_path, version):
     from lxml import etree
     from ph_backend import package_factory
@@ -147,6 +181,52 @@ def test_sip_file_count_limit_and_folder_recommendation(sip_dir, monkeypatch):
     folder_limit = next(issue for issue in issues if issue["checkId"] == "folder_file_count")
     assert package_limit["severity"] == ERROR and package_limit["value"] == "2"
     assert folder_limit["severity"] == WARNING and folder_limit["value"] == "d0001"
+
+
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+@pytest.mark.parametrize("delivery_type", ["GEVER", "FILES"])
+def test_recommended_package_size_boundary_is_a_warning(tmp_path, monkeypatch, version, delivery_type):
+    from ph_backend import files, package_factory, validation
+
+    pkg = package_factory.create_package(tmp_path, f"SIP_20261107_Test_SizeBoundary_{version}_{delivery_type}", "Test",
+                                         version=version, delivery_type=delivery_type)
+    content = next(folder for folder in pkg.iter_kind("ordner") if pkg.text(folder, "name") == "content")
+    payload = tmp_path / "payload.txt"
+    payload.write_bytes(b"x")
+    files.import_paths(pkg, content, [payload])
+    total = sum(path.stat().st_size for path in pkg.file_root.rglob("*") if path.is_file())
+
+    monkeypatch.setattr(validation, "MAX_PACKAGE_SIZE", total)
+    assert not [issue for issue in Validator(pkg).run(full=True) if issue["checkId"] == "package_size"]
+
+    monkeypatch.setattr(validation, "MAX_PACKAGE_SIZE", total - 1)
+    findings = [issue for issue in Validator(pkg).run(full=True) if issue["checkId"] == "package_size"]
+
+    assert len(findings) == 1 and findings[0]["value"] == str(total)
+    assert findings[0]["severity"] == WARNING
+
+
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+def test_recommended_path_length_boundary_is_a_warning(tmp_path, version):
+    from ph_backend import files, package_factory
+
+    pkg = package_factory.create_package(tmp_path, f"SIP_20261107_Test_PathBoundary_{version}", "Test",
+                                         version=version)
+    content = next(folder for folder in pkg.iter_kind("ordner") if pkg.text(folder, "name") == "content")
+    prefix_length = len(f"{pkg.root_dir.name}/content/")
+    names = [(target_length, "a" * (target_length - prefix_length - 4) + ".txt")
+             for target_length in (179, 180)]
+    sources = []
+    for _, name in names:
+        source = tmp_path / name
+        source.write_text("path length boundary", encoding="utf-8")
+        sources.append(source)
+    files.import_paths(pkg, content, sources)
+
+    findings = {issue["value"]: issue["severity"] for issue in Validator(pkg).run(full=True)
+                if issue["checkId"] == "path_length"}
+
+    assert findings == {f"{pkg.root_dir.name}/content/{names[1][1]}": WARNING}
 
 
 def test_files_integrated_documentation_requires_pair_and_dossier_link(tmp_path):
@@ -328,6 +408,53 @@ def test_dangling_datei_ref_is_reported(tmp_path):
                for issue in issues)
 
 
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+def test_files_primary_data_hierarchy_roundtrips_under_content(tmp_path, version):
+    from ph_backend import files, package_factory, structure
+
+    pkg = package_factory.create_package(tmp_path, f"SIP_20261107_Test_FILES_Content_{version}", "Test",
+                                         version=version, delivery_type="FILES")
+    content = next(element for element in pkg.iter_kind("ordner") if pkg.text(element, "name") == "content")
+    nested = files.create_folder(pkg, content, "series")
+    source = tmp_path / "primary.txt"
+    source.write_text("primary content", encoding="utf-8")
+    files.import_paths(pkg, nested, [source])
+    file_element = next(element for element in pkg.children(nested, "datei"))
+    dossier = structure.add_objects(pkg, next(pkg.iter_kind("ordnungssystemposition")), "dossier")[0]
+    structure.assign_files(pkg, dossier, [file_element])
+
+    pkg.save()
+    reopened = SipPackage.open_folder(pkg.root_dir)
+    reopened_file = reopened.file_by_id(file_element.get("id"))
+
+    assert reopened.relpath(reopened_file).as_posix() == "content/series/primary.txt"
+    assert reopened.fs_path(reopened_file).is_file()
+    assert not [issue for issue in Validator(reopened).run(full=True)
+                if issue["checkId"] in {"schema", "missing_file", "surplus_file", "missing_folder",
+                                        "surplus_folder", "invalid_reference"}]
+
+
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+def test_files_primary_data_reference_outside_content_is_rejected(tmp_path, version):
+    from ph_backend import files, package_factory, structure
+
+    pkg = package_factory.create_package(tmp_path, f"SIP_20261107_Test_FILES_Outside_{version}", "Test",
+                                         version=version, delivery_type="FILES")
+    primary = pkg.file_root / "header" / "xsd" / "primary.pdf"
+    primary.write_bytes(b"primary content")
+    assert files.add_to_table_of_contents(pkg, "header/xsd/primary.pdf") == 1
+    from ph_backend.sip import localname
+
+    file_element = next(element for element, path in pkg.walk_table_of_contents()
+                        if localname(element) == "datei" and path.as_posix() == "header/xsd/primary.pdf")
+    dossier = structure.add_objects(pkg, next(pkg.iter_kind("ordnungssystemposition")), "dossier")[0]
+    structure.assign_files(pkg, dossier, [file_element])
+
+    issues = [issue for issue in Validator(pkg).run(full=True) if issue["checkId"] == "invalid_reference"]
+
+    assert any(issue["severity"] == ERROR and issue["value"] == file_element.get("id") for issue in issues)
+
+
 @pytest.mark.parametrize("schema_location", ["../../../outside.xsd", "https://example.invalid/evil.xsd"])
 def test_schema_validation_rejects_external_or_escaping_dependencies(tmp_path, schema_location):
     from ph_backend import package_factory
@@ -373,6 +500,23 @@ def test_schema_validation_accepts_and_rejects_metadata_for_each_release(tmp_pat
     issues = Validator(pkg).run(full=True)
 
     assert any(issue["checkId"] == "schema" for issue in issues), version
+
+
+@pytest.mark.parametrize("version,schema_version", [("1.2", "5.0"), ("1.3", "5.1")])
+@pytest.mark.parametrize("delivery_type", ["GEVER", "FILES"])
+def test_schema_validation_rejects_arelda_namespace_mismatch(tmp_path, version, schema_version, delivery_type):
+    from ph_backend import package_factory
+
+    pkg = package_factory.create_package(
+        tmp_path, f"SIP_20261107_Test_NamespaceMismatch_{version}_{delivery_type}", "Test",
+        version=version, delivery_type=delivery_type)
+    assert pkg.root.get("schemaVersion") == schema_version
+    assert not [issue for issue in Validator(pkg).run(full=True) if issue["checkId"] == "schema"]
+
+    pkg.root.tag = "{urn:invalid:arelda}paket"
+    issues = [issue for issue in Validator(pkg).run(full=True) if issue["checkId"] == "schema"]
+
+    assert any(issue["severity"] == ERROR for issue in issues), (version, delivery_type)
 
 
 def test_schema_validation_rejects_metadata_accepted_only_by_custom_package_schema(tmp_path):
@@ -511,6 +655,27 @@ def test_ech_allowed_filename_punctuation_passes_validation(sip_dir):
     assert not {issue["checkId"] for issue in issues} & {"charset", "missing_file", "wrong_file", "checksum"}
 
 
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+@pytest.mark.parametrize("delivery_type", ["GEVER", "FILES"])
+def test_charset_validation_checks_imported_folder_and_file_names(tmp_path, version, delivery_type):
+    from ph_backend import files, package_factory
+
+    pkg = package_factory.create_package(tmp_path, f"SIP_20261107_Test_Charset_{version}_{delivery_type}", "Test",
+                                         version=version, delivery_type=delivery_type)
+    content = next(element for element in pkg.iter_kind("ordner") if pkg.text(element, "name") == "content")
+    source = tmp_path / "batch"
+    invalid_folder = source / "Group & Ä"
+    invalid_folder.mkdir(parents=True)
+    (source / "allowed.txt").write_text("allowed name", encoding="utf-8")
+    (invalid_folder / "report&final.txt").write_text("invalid names", encoding="utf-8")
+    files.import_paths(pkg, content, [source])
+
+    findings = [issue for issue in Validator(pkg).run(full=True) if issue["checkId"] == "charset"]
+
+    assert {(issue["object"], issue["value"]) for issue in findings} == {
+        ("Ordner", "Group & Ä"), ("Datei", "report&final.txt")}
+
+
 def test_estimated_dossier_period_requires_reason(tmp_path):
     from ph_backend import package_factory, structure
     from ph_backend.sip import SipPackage
@@ -585,6 +750,38 @@ def test_protection_period_scope_is_consistent(tmp_path, version, delivery_type)
         assert any("Stufe" in issue["description"] for issue in issues), (version, delivery_type, other_scope)
 
 
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+@pytest.mark.parametrize("delivery_type", ["GEVER", "FILES"])
+@pytest.mark.parametrize("scope", ["delivery", "position", "dossier"])
+def test_protection_period_values_roundtrip_by_release(tmp_path, version, delivery_type, scope):
+    from ph_backend import package_factory, structure
+
+    pkg = package_factory.create_package(
+        tmp_path, f"SIP_20261107_Test_ProtectionRoundtrip_{version}_{delivery_type}_{scope}", "Test",
+        version=version, delivery_type=delivery_type)
+    position = next(pkg.iter_kind("ordnungssystemposition"))
+    dossier = structure.add_objects(pkg, position, "dossier")[0]
+    owners = {"delivery": pkg.delivery, "position": position, "dossier": dossier}
+    owner = owners[scope]
+    pkg.set_text(owner, "schutzfristenkategorie", "BGA", required=True)
+    pkg.set_text(owner, "schutzfrist", "30", required=True)
+
+    pkg.save()
+    reopened = SipPackage.open_folder(pkg.root_dir)
+    reopened_owners = {
+        "delivery": reopened.delivery,
+        "position": next(reopened.iter_kind("ordnungssystemposition")),
+        "dossier": next(reopened.iter_kind("dossier")),
+    }
+    reopened_owner = reopened_owners[scope]
+
+    assert reopened.text(reopened_owner, "schutzfristenkategorie") == "BGA"
+    assert reopened.text(reopened_owner, "schutzfrist") == "30"
+    issues = [issue for issue in Validator(reopened).run(full=True)
+              if issue["checkId"] in {"schema", "protection_period"}]
+    assert not issues, (version, delivery_type, scope, issues)
+
+
 def test_duplicate_position_numbers(sip_dir):
     pkg = SipPackage.open_folder(sip_dir)
     position = next(pkg.iter_kind("ordnungssystemposition"))
@@ -621,6 +818,72 @@ def test_file_format_check_follows_kad(sip_dir):
     pkg.invalidate_file_index()
     severities = {i["value"]: i["severity"] for i in Validator(pkg).run(full=True) if i["checkId"] == "file_format"}
     assert severities == {"p000001.odt": ERROR, "p000002.xyz": WARNING}
+
+
+def test_droid_extension_mismatch_is_reported(sip_dir, monkeypatch):
+    import csv
+    import subprocess
+    from pathlib import Path
+    from ph_backend import validation
+
+    pkg = SipPackage.open_folder(sip_dir)
+    mismatched_path = pkg.fs_path(pkg.file_by_id("_file1"))
+    matching_path = pkg.fs_path(pkg.file_by_id("_file2"))
+    monkeypatch.setattr(validation.shutil, "which", lambda command: "droid")
+
+    def fake_run(command, **kwargs):
+        report_path = Path(command[command.index("-o") + 1])
+        with report_path.open("w", encoding="utf-8", newline="") as stream:
+            writer = csv.writer(stream)
+            writer.writerow(["FILE_PATH", "NAME", "EXTENSION_MISMATCH", "PUID", "FORMAT_NAME"])
+            writer.writerow([str(mismatched_path), mismatched_path.name, "true", "fmt/18", "PDF"])
+            writer.writerow([str(matching_path), matching_path.name, "false", "fmt/200", "Plain Text"])
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(validation.subprocess, "run", fake_run)
+    issues = [issue for issue in Validator(pkg, identify_formats=True).run(full=True)
+              if issue["checkId"] == "droid_format"]
+
+    assert len(issues) == 1
+    assert issues[0]["severity"] == ERROR
+    assert issues[0]["value"] == "p000001.pdf"
+    assert "fmt/18" in issues[0]["description"]
+
+
+def test_droid_missing_warns_when_identification_is_requested(sip_dir, monkeypatch):
+    from ph_backend import validation
+
+    monkeypatch.setattr(validation.shutil, "which", lambda command: None)
+    issues = [issue for issue in Validator(SipPackage.open_folder(sip_dir), identify_formats=True).run(full=True)
+              if issue["checkId"] == "droid_format"]
+
+    assert len(issues) == 1
+    assert issues[0]["severity"] == WARNING
+    assert "nicht gefunden" in issues[0]["description"]
+
+
+def test_droid_detects_pdf_content_with_txt_extension(tmp_path):
+    import shutil
+    from pathlib import Path
+    from ph_backend import files, package_factory
+
+    if not shutil.which("droid"):
+        pytest.skip("DROID is not installed")
+    sample_pdf = next((Path(__file__).parents[1] / "samples").rglob("*.pdf"), None)
+    if sample_pdf is None:
+        pytest.skip("No PDF sample is available")
+
+    pkg = package_factory.create_package(tmp_path, "SIP_20261107_Test_DROID_Mismatch", "Test")
+    content = next(element for element in pkg.iter_kind("ordner") if pkg.text(element, "name") == "content")
+    mislabeled_pdf = tmp_path / "misidentified.txt"
+    shutil.copyfile(sample_pdf, mislabeled_pdf)
+    files.import_paths(pkg, content, [mislabeled_pdf])
+
+    issues = [issue for issue in Validator(pkg, identify_formats=True).run(full=True)
+              if issue["checkId"] == "droid_format"]
+
+    assert any(issue["severity"] == ERROR and issue["value"] == "misidentified.txt"
+               and "fmt/" in issue["description"] for issue in issues)
 
 
 def test_kost_sample_is_schema_valid(sample_sip):

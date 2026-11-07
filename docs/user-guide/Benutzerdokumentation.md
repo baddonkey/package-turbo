@@ -769,17 +769,17 @@ Package Turbo prüft die Dateien in `content` anhand des **Katalogs archivischer
 | Nicht akzeptiert (z. B. ODT/ODP, DNG, MHTML, ARC, STEP) | Fehler |
 | Nicht im KaD erfasst | Warnung |
 
-> **Wichtig:** Die Formaterkennung verwendet derzeit nur die Dateiendung. Varianten mit gleicher Endung (z. B. PDF/A-3 oder GeoTIFF) lassen sich damit nicht unterscheiden. Die Bewertung ist kein Nachweis der Formatkonformität, etwa von PDF/A. Package Turbo konvertiert keine Dateien.
+> **Wichtig:** Die KaD-Bewertung beruht auf der Dateiendung. Bei der vollständigen Validierung vergleicht DROID zusätzlich die Dateiendung mit seiner Signaturerkennung; erkannte Abweichungen werden als Fehler gemeldet. DROID muss über `PATH` oder `DROID_EXECUTABLE` verfügbar sein. Fehlt DROID oder schlägt die Erkennung fehl, erscheint eine Warnung. Auch DROID weist keine Formatkonformität nach (z. B. PDF/A); Varianten mit gleicher Endung (z. B. PDF/A-3 oder GeoTIFF) lassen sich weiterhin nicht unterscheiden. Package Turbo konvertiert keine Dateien.
 
 Die vollständige Validierung erkennt passwortgeschützte PDFs, verschlüsselte Einträge in ZIP-Dateien und passwortgeschützte Office-Dateien in unterstützten Formaten. Andere Verschlüsselungsverfahren werden nicht umfassend erkannt; ein fehlender Hinweis ist daher kein allgemeiner Nachweis für unverschlüsselte Dateien.
 
 #### 10.4.2 Paketgrösse
 
-Prüfung, ob das Paket die maximale Grösse von 8 GB übersteigt. Eine Aufteilung auf mehrere Pakete wird nicht angeboten.
+Warnung, wenn das Paket die empfohlene Grösse von 8 GB übersteigt. Klären Sie grössere Ablieferungen vorab mit dem zuständigen Archiv. Eine Aufteilung auf mehrere Pakete wird nicht angeboten.
 
 #### 10.4.3 Pfadlänge
 
-Prüfung, ob der Pfad zu einer Datei oder einem Ordner (inkl. Toplevel-Ordner) 180 Zeichen oder mehr umfasst.
+Warnung, wenn der Pfad zu einer Datei oder einem Ordner (inkl. Toplevel-Ordner) 180 Zeichen oder mehr umfasst. Kürzere Pfade werden empfohlen.
 
 | Fehlerbehebung | Vorgehen |
 |---|---|

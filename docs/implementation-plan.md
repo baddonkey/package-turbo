@@ -296,7 +296,7 @@ it does not encode the PDF's prose rules, data-dictionary semantics, archive-spe
 full per-value negative cases, or guarantee that conditional sample fixtures were present during
 a particular CI run. Empty/unknown coverage is a request for review, not an unsupported-pass claim.
 
-Verification: 350 tests pass. Regression tests include all eight version/delivery combinations for authors and reference
+Verification: 463 tests pass. Regression tests include all eight version/delivery combinations for authors and reference
 attributes, structured process roundtrips, legacy and FILES restrictions, list
 identity preservation, native field editing, focused Save and audited Undo/Redo.
 The deterministic XSD inventory generator compiles every bundled schema set and is tested for
@@ -316,23 +316,40 @@ requirements from the v1.3.0 specification, with clause page, MUST/SHOULD level,
 short summary, candidate code surface and test-evidence field. The `in_1_*` columns indicate
 only whether an identifier occurs in each older PDF: they do not prove that the clause text or
 meaning stayed unchanged. The example ID in the specification's notation section is excluded.
-Twenty-two rows are partially verified: M_4.5-1 has exhaustive synthetic presence coverage plus real SIP
+Forty rows are partially verified: P_3.2-2 has a mocked DROID CSV contract and a real PDF-as-TXT mismatch test;
+M_4.1-1 tests XML metadata at `header/metadata.xml` and rejects a misplaced file across all eight release/profile combinations;
+M_4.1-2 tests the selected release version and rejection of an incorrect ARELDA root namespace for releases 1.2 and 1.3 in both profiles;
+M_4.1-3 verifies unprefixed ARELDA elements after XSD-valid save/reopen for releases 1.2 and 1.3 in both profiles;
+M_4.4-1 tests matching FILES/GEVER metadata entity types and rejects profile/type mismatches across all four releases;
+M_4.8-3 tests nested FILES layout, TOC, and dossier-assignment roundtrip plus the unassigned-file negative across all four releases;
+M_4.9-1 tests protection-period values persisting at delivery, position, and dossier scopes across all release/profile combinations;
+M_4.5-1 has exhaustive synthetic presence coverage plus real SIP
 save/reopen cases; M_4.9-2 tests protection-period scope selection and mixed-scope rejection;
-M_4.10-1 has a tested dossier-estimation rule; S_5.2-1/2 have tested count
-threshold/severity behavior; M_4.4-2 has FILES Dossier/Document links in all releases and Mappe links
+M_4.10-1 has a tested dossier-estimation rule; M_4.8-2 has GEVER classification scheme presence, save/reopen and missing-scheme cases across four releases; S_5.2-1/2 have tested count
+threshold/severity behavior; S_5.1-1 tests the exact package-size boundary and warning severity;
+M_4.3-2 has GEVER Dossier/Mappe/Document and file-ref roundtrips in v1.2/v1.3;
+M_4.4-2 has FILES Dossier/Document links in all releases and Mappe links
 in the schema-permitted Dossier context; M_4.4-3 has FILES classification hierarchy checks for all
 releases, including Mappe paths where supported; M_4.11-1 has missing, unsupported, matching and mismatching digest cases
 for all supported algorithms; A_2.6-1/2 have partial PDF, ZIP and Office encryption detection;
 M_4.6-1 has positive and negative metadata validation cases for all four release schemas; M_4.7-1
 has valid, missing and surplus file/folder TOC cases for all four releases;
+M_4.6-2 has generated namespace/local schemaLocation resolution and save/reopen coverage;
 S_5.4-2 has SIP-name pattern and preference-toggle cases; S_5.4-3 has valid and invalid top-level header/content layout cases across all four releases;
 S_5.4-4 rejects non-XSD files anywhere under `header/`;
 S_5.4-5 has selected schema-file set checks across all releases and missing-dependency failures;
 M_4.12-1 has valid file assignments round-tripped across all eight release/profile combinations and a dangling-ID negative case;
 M_4.12-2 has release-gated optional attributes and XSD-valid save/reopen coverage;
-S_5.3-2 has allowed/forbidden character coverage; S_5.8-1/2/3 have
+S_5.3-1 has file/folder charset findings across eight release/profile combinations;
+S_5.3-2 has allowed/forbidden character coverage; S_5.3-3 has invalid folder/file normalization and exact round-trips;
+S_5.3-4 has colliding-name normalization and exact restoration tests;
+S_5.3-5 has originalName retention through package import, normalization, save/reopen and denormalization;
+S_5.5-1 tests the 179/180-character boundary and warning severity;
+S_5.4-6 tests valid content placement and rejects SIP-root/header primary data across all eight release/profile combinations;
+S_5.7-1 tests nested FILES primary-data hierarchy and outside-content reference rejection across all four releases;
+S_5.8-1/2/3 have
 conditional integrated-documentation folder, TOC, file-presence and SIARD dossier-link checks;
-The other 38 remain `not-assessed`; candidate code paths and sample smoke tests are not
+The other 20 remain `not-assessed`; candidate code paths and sample smoke tests are not
 clause-conformance evidence.
 
 The [data-dictionary matrix](ech0160-data-dictionary.csv) contains 969 profile-specific rows

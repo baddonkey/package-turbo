@@ -1,6 +1,11 @@
 """Package structure, metadata, fixity and archival acceptance checks."""
 
+import csv
+import os
 import re
+import shutil
+import subprocess
+import tempfile
 import zipfile
 from collections import defaultdict
 from dataclasses import dataclass
@@ -41,6 +46,7 @@ _PLAUSIBILITY = "Vollständigkeit und Plausibilität"
 
 CHECKS = [
     Check("file_format", "Dateiformat", _STRUCTURE, True),
+    Check("droid_format", "Formaterkennung (DROID)", _STRUCTURE, True),
     Check("encryption", "Verschlüsselte Primärdatei", _STRUCTURE, True),
     Check("package_size", "Paketgrösse", _STRUCTURE, True),
     Check("file_count", "Dateianzahl im SIP", _STRUCTURE, True),
@@ -105,9 +111,10 @@ def _validate_local_schema_dependencies(schema_path: Path, schema_directory: Pat
 
 
 class Validator:
-    def __init__(self, pkg: SipPackage, validate_sip_name: bool = True):
+    def __init__(self, pkg: SipPackage, validate_sip_name: bool = True, identify_formats: bool = False):
         self.pkg = pkg
         self.validate_sip_name = validate_sip_name
+        self.identify_formats = identify_formats
         self.issues: list[dict] = []
         self._schema_cache: dict[Path, etree.XMLSchema] = {}
 
@@ -187,6 +194,71 @@ class Validator:
                           f"Das Format {fmt.name} ist im KOST-Katalog archivischer Dateiformate (KaD) nicht erfasst.",
                           "name", rel.name, WARNING)
 
+    def _check_droid_format(self):
+        if not self.identify_formats or self.pkg.file_root is None:
+            return
+        content_directory = Path(self.pkg.file_root) / "content"
+        if not content_directory.is_dir():
+            return
+
+        entries_by_path = {}
+        for element, relative in self._content_files():
+            path = self.pkg.fs_path(element)
+            if path is not None and path.is_file():
+                path_key = os.path.normcase(os.path.abspath(path))
+                entries_by_path[path_key] = (element, relative)
+        if not entries_by_path:
+            return
+
+        configured_executable = os.environ.get("DROID_EXECUTABLE", "droid")
+        executable = shutil.which(configured_executable)
+        if executable is None and Path(configured_executable).is_file():
+            executable = configured_executable
+        if executable is None:
+            self._add("droid_format", None,
+                      "DROID wurde nicht gefunden; die Dateiendung konnte nicht mit dem Dateiformat abgeglichen werden.",
+                      severity=WARNING)
+            return
+
+        try:
+            with tempfile.TemporaryDirectory(prefix="package-turbo-droid-") as temporary_directory:
+                report_path = Path(temporary_directory) / "identification.csv"
+                result = subprocess.run(
+                    [executable, "-q", "-R", "-co", "FILE_PATH", "NAME", "EXTENSION_MISMATCH", "PUID",
+                     "FORMAT_NAME", "-a", str(content_directory), "-o", str(report_path)],
+                    capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300, check=False)
+                if result.returncode != 0 or not report_path.is_file():
+                    detail = result.stderr.strip() or f"Exit-Code {result.returncode}"
+                    self._add("droid_format", None,
+                              f"DROID konnte die Dateien nicht identifizieren ({detail}).", severity=WARNING)
+                    return
+
+                with report_path.open(encoding="utf-8-sig", newline="") as stream:
+                    reader = csv.DictReader(stream)
+                    required_columns = {"FILE_PATH", "EXTENSION_MISMATCH", "PUID", "FORMAT_NAME"}
+                    if not reader.fieldnames or not required_columns.issubset(reader.fieldnames):
+                        raise csv.Error("DROID report is missing required columns")
+                    for row in reader:
+                        if row.get("EXTENSION_MISMATCH", "").strip().lower() != "true":
+                            continue
+                        reported_path = row.get("FILE_PATH", "").strip()
+                        if not reported_path:
+                            continue
+                        path_key = os.path.normcase(os.path.abspath(reported_path))
+                        entry = entries_by_path.get(path_key)
+                        if entry is None:
+                            continue
+                        element, relative = entry
+                        format_name = row.get("FORMAT_NAME", "").strip() or "unbekanntes Format"
+                        puid = row.get("PUID", "").strip()
+                        identification = f"{format_name} ({puid})" if puid else format_name
+                        self._add("droid_format", element,
+                                  f"Die Dateiendung stimmt nicht mit der DROID-Identifikation {identification} überein.",
+                                  "name", relative.name, ERROR, path=relative.as_posix())
+        except (OSError, csv.Error, subprocess.SubprocessError) as exc:
+            self._add("droid_format", None,
+                      f"DROID konnte die Dateien nicht identifizieren ({exc}).", severity=WARNING)
+
     def _check_encryption(self):
         import msoffcrypto
         from msoffcrypto.exceptions import FileFormatError
@@ -227,7 +299,7 @@ class Validator:
         total = sum(p.stat().st_size for p in self.pkg.file_root.rglob("*") if p.is_file())
         if total > MAX_PACKAGE_SIZE:
             self._add("package_size", None, f"Das Paket ist {total / 1024 ** 3:.2f} GB gross (maximal 8 GB).",
-                      value=str(total))
+                      value=str(total), severity=WARNING)
 
     def _check_file_count(self):
         files_in_package = [(element, path) for element, path in self._toc_entries()
@@ -251,7 +323,7 @@ class Validator:
             full = f"{top}/{rel.as_posix()}" if top else rel.as_posix()
             if len(full) >= MAX_PATH_LENGTH:
                 self._add("path_length", el, f"Der Pfad ist {len(full)} Zeichen lang (weniger als 180 erlaubt).",
-                          "name", full)
+                          "name", full, WARNING)
 
     def _check_checksum(self):
         pkg = self.pkg
@@ -658,6 +730,17 @@ class Validator:
                           "entstehungszeitraum", timespan.format_span(start, end), WARNING)
 
     def _check_schema(self):
+        delivery_type = self.pkg.delivery_type.upper()
+        expected_type = {"GEVER": "ablieferungGeverSIP", "FILES": "ablieferungFilesSIP"}.get(delivery_type)
+        if expected_type:
+            xsi_type = self.pkg.delivery.get("{http://www.w3.org/2001/XMLSchema-instance}type", "")
+            prefix, separator, local_type = xsi_type.partition(":")
+            type_namespace = self.pkg.delivery.nsmap.get(prefix) if separator else self.pkg.delivery.nsmap.get(None)
+            if (type_namespace, local_type if separator else xsi_type) != (self.pkg.ns, expected_type):
+                self._add("schema", self.pkg.delivery,
+                          f"Der Ablieferungstyp {delivery_type} stimmt nicht mit dem xsi:type "
+                          f"{xsi_type!r} überein.", value=xsi_type, severity=ERROR)
+
         schema_version = self.pkg.root.get("schemaVersion", "")
         trusted_directory = xsd_info.schema_directory(schema_version)
         if trusted_directory is None:

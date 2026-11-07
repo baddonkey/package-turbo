@@ -23,6 +23,27 @@ def test_new_package_is_schema_valid(new_pkg):
     assert not full & {"checksum", "surplus_file", "missing_file", "header_content", "sip_name"}
 
 
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+def test_gever_classification_scheme_is_created_persisted_and_required(tmp_path, version):
+    pkg = package_factory.create_package(tmp_path, f"SIP_20261107_Test_GEVER_Scheme_{version}", "Test",
+                                         version=version, delivery_type="GEVER")
+    scheme = pkg.classification_system
+    assert scheme is not None
+    assert scheme.getparent() is pkg.delivery
+    assert len(list(pkg.iter_kind("ordnungssystem"))) == 1
+    assert _schema_errors(pkg) == []
+
+    pkg.save()
+    reopened = SipPackage.open_folder(pkg.root_dir)
+    assert reopened.classification_system is not None
+    assert reopened.classification_system.getparent() is reopened.delivery
+    assert _schema_errors(reopened) == []
+
+    reopened.delivery.remove(reopened.classification_system)
+    issues = Validator(reopened).run(full=True)
+    assert any(issue["checkId"] == "schema" for issue in issues), version
+
+
 @pytest.mark.parametrize("version", ["1.1", "1.2", "1.3"])
 def test_structured_process_activity_creation_and_editing(tmp_path, version):
     from ph_backend.editor import MetadataEditor
@@ -113,11 +134,37 @@ def test_new_files_package(tmp_path):
     assert pkg.delivery_type == "FILES" and _schema_errors(pkg) == []
 
 
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+@pytest.mark.parametrize(("delivery_type", "matching_type", "mismatching_type"), [
+    ("FILES", "ablieferungFilesSIP", "ablieferungGeverSIP"),
+    ("GEVER", "ablieferungGeverSIP", "ablieferungFilesSIP"),
+])
+def test_delivery_type_uses_matching_metadata_entity(
+        tmp_path, version, delivery_type, matching_type, mismatching_type):
+    xsi_type = "{http://www.w3.org/2001/XMLSchema-instance}type"
+    pkg = package_factory.create_package(
+        tmp_path, f"SIP_20261107_Amt_{delivery_type}_Type_{version}", "Amt",
+        version=version, delivery_type=delivery_type)
+
+    assert pkg.text(pkg.delivery, "ablieferungstyp") == delivery_type
+    assert pkg.delivery.get(xsi_type) == matching_type
+    assert _schema_errors(pkg) == []
+
+    pkg.delivery.set(xsi_type, mismatching_type)
+    schema_issues = [issue for issue in Validator(pkg).run(full=True) if issue["checkId"] == "schema"]
+
+    assert any(issue["severity"] == "error" for issue in schema_issues), version
+
+
 @pytest.mark.parametrize("version,schema_version", [("1.0", "4.0"), ("1.1", "4.1"), ("1.2", "5.0"), ("1.3", "5.1")])
 @pytest.mark.parametrize("delivery_type", ["GEVER", "FILES"])
 def test_creation_preserves_selected_schema_version(tmp_path, version, schema_version, delivery_type):
     pkg = package_factory.create_package(tmp_path, "SIP_20260104_Amt_Version", "Amt",
                                          delivery_type=delivery_type, version=version)
+    schema_location = pkg.root.get("{http://www.w3.org/2001/XMLSchema-instance}schemaLocation", "").split()
+    assert schema_location == [pkg.ns, "xsd/arelda.xsd"]
+    assert (pkg.metadata_path.parent / schema_location[1]).resolve() == pkg.xsd_path().resolve()
+    assert pkg.xsd_path().is_file()
     assert pkg.root.get("schemaVersion") == schema_version
     bundled_xsds = xsd_info.schema_directory(schema_version)
     source_files = {path.name: path.read_bytes() for path in bundled_xsds.glob("*.xsd")}
@@ -126,9 +173,33 @@ def test_creation_preserves_selected_schema_version(tmp_path, version, schema_ve
     pkg.set_text(pkg.delivery, "ablieferungsnummer", "42")
     pkg.save()
     reopened = SipPackage.open_folder(pkg.root_dir)
+    reopened_schema_location = reopened.root.get(
+        "{http://www.w3.org/2001/XMLSchema-instance}schemaLocation", "").split()
+    assert reopened_schema_location == [reopened.ns, "xsd/arelda.xsd"]
+    assert (reopened.metadata_path.parent / reopened_schema_location[1]).resolve() == reopened.xsd_path().resolve()
     assert reopened.root.get("schemaVersion") == schema_version
     reopened_files = {path.name: path.read_bytes() for path in (reopened.file_root / "header" / "xsd").glob("*.xsd")}
     assert reopened_files == source_files
+    assert _schema_errors(reopened) == []
+
+
+@pytest.mark.parametrize("version,schema_version", [("1.2", "5.0"), ("1.3", "5.1")])
+@pytest.mark.parametrize("delivery_type", ["GEVER", "FILES"])
+def test_arelda_elements_use_default_namespace_after_reopen(tmp_path, version, schema_version, delivery_type):
+    from lxml import etree
+
+    expected_namespace = "http://bar.admin.ch/arelda/v4"
+    pkg = package_factory.create_package(tmp_path, f"SIP_20261107_Amt_Unprefixed_{version}_{delivery_type}", "Amt",
+                                         delivery_type=delivery_type, version=version)
+    pkg.save()
+    reopened = SipPackage.open_folder(pkg.root_dir)
+    arelda_elements = [element for element in reopened.root.iter()
+                       if etree.QName(element).namespace == expected_namespace]
+
+    assert arelda_elements
+    assert reopened.root.nsmap[None] == expected_namespace
+    assert all(element.prefix is None for element in arelda_elements)
+    assert reopened.root.get("schemaVersion") == schema_version
     assert _schema_errors(reopened) == []
 
 
@@ -154,6 +225,54 @@ def test_recursive_mappen_use_contextual_schema_type(tmp_path, delivery_type):
     assert _schema_errors(pkg) == []
     pkg.save()
     assert _schema_errors(SipPackage.open_folder(pkg.root_dir)) == []
+
+
+@pytest.mark.parametrize("version", ["1.2", "1.3"])
+def test_gever_dossier_mappe_document_relationships_roundtrip(tmp_path, version):
+    pkg = package_factory.create_package(tmp_path, f"SIP_20261107_GEVERe2e_Relationships_{version}", "Test",
+                                         version=version, delivery_type="GEVER")
+    position = next(pkg.iter_kind("ordnungssystemposition"))
+    dossier = structure.add_objects(pkg, position, "dossier")[0]
+    mappe = structure.add_objects(pkg, dossier, "mappe")[0]
+    direct_document = structure.add_objects(pkg, dossier, "dokument")[0]
+    mapped_document = structure.add_objects(pkg, mappe, "dokument")[0]
+
+    with pytest.raises(structure.StructureError):
+        structure.add_objects(pkg, position, "dokument")
+    if version == "1.2":
+        assert "mappe" not in structure.allowed_children(pkg, mappe)
+        with pytest.raises(structure.StructureError):
+            structure.add_objects(pkg, mappe, "mappe")
+    else:
+        nested_mappe = structure.add_objects(pkg, mappe, "mappe")[0]
+        assert nested_mappe.getparent() is mappe
+
+    content = next(element for element in pkg.iter_kind("ordner") if pkg.text(element, "name") == "content")
+    sources = []
+    for filename in ("direct.txt", "mapped.txt"):
+        source = tmp_path / filename
+        source.write_text(filename, encoding="utf-8")
+        sources.append(source)
+    files.import_paths(pkg, content, sources)
+    file_elements = list(pkg.children(content, "datei"))
+    structure.assign_files(pkg, direct_document, [file_elements[0]])
+    structure.assign_files(pkg, mapped_document, [file_elements[1]])
+
+    assert _schema_errors(pkg) == []
+    assert pkg.referenced_files(direct_document) == [file_elements[0]]
+    assert pkg.referenced_files(mapped_document) == [file_elements[1]]
+    pkg.save()
+
+    reopened = SipPackage.open_folder(pkg.root_dir, read_only=True)
+    reopened_dossier = next(reopened.iter_kind("dossier"))
+    reopened_mappe = reopened.children(reopened_dossier, "mappe")[0]
+    assert len(reopened.children(reopened_dossier, "dokument")) == 1
+    assert len(reopened.children(reopened_mappe, "dokument")) == 1
+    assert [reopened.display_name(file_element) for file_element in
+            reopened.referenced_files(reopened.children(reopened_dossier, "dokument")[0])] == ["direct.txt"]
+    assert [reopened.display_name(file_element) for file_element in
+            reopened.referenced_files(reopened.children(reopened_mappe, "dokument")[0])] == ["mapped.txt"]
+    assert _schema_errors(reopened) == []
 
 
 def test_v12_mappen_reject_v13_only_recursion(tmp_path):
@@ -243,6 +362,78 @@ def test_build_import_assign_and_validate(new_pkg, tmp_path):
     pkg.save()
     full = {i["checkId"] for i in Validator(pkg).run(full=True)}
     assert not full & {"checksum", "surplus_file", "missing_file", "schema"}
+
+
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+@pytest.mark.parametrize("delivery_type", ["GEVER", "FILES"])
+def test_normalization_resolves_collisions_and_restores_original_names(tmp_path, version, delivery_type):
+    pkg = package_factory.create_package(tmp_path, f"SIP_20261107_Test_Normalize_{version}_{delivery_type}", "Test",
+                                         version=version, delivery_type=delivery_type)
+    content = next(element for element in pkg.iter_kind("ordner") if pkg.text(element, "name") == "content")
+    payloads = {"a中b.txt": b"first payload", "a文b.txt": b"second payload"}
+    sources = []
+    for name, data in payloads.items():
+        source = tmp_path / name
+        source.write_bytes(data)
+        sources.append(source)
+    files.import_paths(pkg, content, sources)
+
+    assert files.normalize_names(pkg) == 2
+    entries = list(pkg.children(content, "datei"))
+    assert {pkg.text(element, "name") for element in entries} == {"a_b.txt", "a_b_1.txt"}
+    assert {pkg.text(element, "originalName") for element in entries} == set(payloads)
+    assert {pkg.text(element, "originalName"): pkg.fs_path(element).read_bytes() for element in entries} == payloads
+
+    pkg.save()
+    pkg = SipPackage.open_folder(pkg.root_dir)
+    assert files.denormalize(pkg) == 2
+    entries = list(pkg.children(content := next(element for element in pkg.iter_kind("ordner")
+                                                 if pkg.text(element, "name") == "content"), "datei"))
+    assert {pkg.text(element, "name"): pkg.fs_path(element).read_bytes() for element in entries} == payloads
+    assert not {issue["checkId"] for issue in Validator(pkg).run(full=True)} & {
+        "schema", "checksum", "missing_file", "surplus_file", "surplus_folder"}
+
+
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+@pytest.mark.parametrize("delivery_type", ["GEVER", "FILES"])
+def test_normalization_roundtrips_invalid_folder_and_file_names(tmp_path, version, delivery_type):
+    pkg = package_factory.create_package(tmp_path, f"SIP_20261107_Test_NormalizeNames_{version}_{delivery_type}", "Test",
+                                         version=version, delivery_type=delivery_type)
+    content = next(element for element in pkg.iter_kind("ordner") if pkg.text(element, "name") == "content")
+    source = tmp_path / "source"
+    invalid_folder = source / "Gruppe & Ä"
+    invalid_folder.mkdir(parents=True)
+    payload = b"normalization round-trip payload"
+    (invalid_folder / "report & Ä.txt").write_bytes(payload)
+    files.import_paths(pkg, content, [source])
+
+    assert files.normalize_names(pkg) == 2
+    assert not [issue for issue in Validator(pkg).run(full=True) if issue["checkId"] == "charset"]
+    normalized_folder = next(element for element in pkg.iter_kind("ordner")
+                             if pkg.text(element, "originalName") == "Gruppe & Ä")
+    normalized_file = next(element for element in pkg.iter_kind("datei")
+                            if pkg.text(element, "originalName") == "report & Ä.txt")
+    assert files.is_valid_name(pkg.text(normalized_folder, "name"))
+    assert files.is_valid_name(pkg.text(normalized_file, "name"))
+    assert pkg.fs_path(normalized_file).read_bytes() == payload
+    pkg.save()
+
+    pkg = SipPackage.open_folder(pkg.root_dir)
+    assert files.denormalize(pkg) == 2
+    restored_folder = next(element for element in pkg.iter_kind("ordner")
+                           if pkg.text(element, "name") == "Gruppe & Ä")
+    restored_file = next(element for element in pkg.iter_kind("datei")
+                         if pkg.text(element, "name") == "report & Ä.txt")
+    assert pkg.fs_path(restored_file).read_bytes() == payload
+    pkg.save()
+
+    reopened = SipPackage.open_folder(pkg.root_dir)
+    assert any(pkg.text(element, "name") == "Gruppe & Ä" for element in reopened.iter_kind("ordner"))
+    restored_file = next(element for element in reopened.iter_kind("datei")
+                         if reopened.text(element, "name") == "report & Ä.txt")
+    assert reopened.fs_path(restored_file).read_bytes() == payload
+    assert not {issue["checkId"] for issue in Validator(reopened).run(full=True)} & {
+        "schema", "checksum", "missing_file", "surplus_file"}
 
 
 def test_mass_assign_rules(new_pkg):

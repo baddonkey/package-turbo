@@ -133,6 +133,43 @@ def test_files_relationship_targets_roundtrip_by_release(tmp_path, version):
     assert not [issue for issue in issues if issue["checkId"] in {"schema", "invalid_reference"}]
 
 
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+def test_files_layout_and_classification_roundtrip_by_release(tmp_path, version):
+    from ph_backend import files, package_factory, structure
+
+    pkg = package_factory.create_package(
+        tmp_path, f"SIP_20261107_Test_FILES_LayoutClassification_{version}", "Test",
+        version=version, delivery_type="FILES")
+    content = next(element for element in pkg.iter_kind("ordner") if pkg.text(element, "name") == "content")
+    group = files.create_folder(pkg, content, "series")
+    source = tmp_path / "primary.txt"
+    source.write_text("primary content", encoding="utf-8")
+    files.import_paths(pkg, group, [source])
+    file_element = next(element for element in pkg.children(group, "datei"))
+    dossier = structure.add_objects(pkg, next(pkg.iter_kind("ordnungssystemposition")), "dossier")[0]
+    structure.assign_files(pkg, dossier, [file_element])
+    file_id = file_element.get("id")
+
+    pkg.save()
+    reopened = SipPackage.open_folder(pkg.root_dir)
+    reopened_file = reopened.file_by_id(file_id)
+    reopened_dossier = next(reopened.iter_kind("dossier"))
+
+    assert reopened.relpath(reopened_file).as_posix() == "content/series/primary.txt"
+    assert reopened.fs_path(reopened_file).is_file()
+    assert reopened.referenced_files(reopened_dossier) == [reopened_file]
+    valid_issues = Validator(reopened).run(full=True)
+    assert not [issue for issue in valid_issues
+                if issue["checkId"] in {"schema", "invalid_reference", "unassigned_files",
+                                        "missing_file", "surplus_file", "missing_folder", "surplus_folder"}]
+
+    reference = reopened.children(reopened_dossier, "dateiRef")[0]
+    reopened_dossier.remove(reference)
+    unassigned = [issue for issue in Validator(reopened).run(full=True)
+                  if issue["checkId"] == "unassigned_files"]
+    assert any(issue["value"] == "content/series/primary.txt" for issue in unassigned), version
+
+
 def test_v13_datei_ref_supports_multiple_file_ids(tmp_path):
     from ph_backend import files, package_factory, structure
 

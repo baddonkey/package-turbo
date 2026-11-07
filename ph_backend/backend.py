@@ -33,6 +33,7 @@ MAX_RECENT = 3
 FILE_SYSTEM_CHECKS = {"illegal_entries", "header_content", "wrong_file", "wrong_folder", "missing_file",
                       "missing_folder", "surplus_file", "surplus_folder", "file_format", "identical_files",
                       "positions_and_dossiers", "sip_name", "package_size"}
+DROID_FORMAT_CHECK = "droid_format"
 _AUDIT_ENTITY_KINDS = {"dossier", "subdossier", "mappe", "dokument", "archivischerVorgang",
                        "archivischeNotiz", "ordnungssystemposition"}
 
@@ -201,6 +202,7 @@ class ValidationWorker(QThread):
         self._root_dir = pkg.root_dir
         self._file_root = pkg.file_root
         self._validate_sip_name = validator.validate_sip_name
+        self._identify_formats = validator.identify_formats
         self._validator = None
         self.control = TaskControl(self.bytesChanged.emit)
         self.cancelled = False
@@ -215,7 +217,8 @@ class ValidationWorker(QThread):
                 tree = etree.ElementTree(etree.fromstring(self._snapshot_xml, parser))
                 pkg = SipPackage(self._metadata_path, tree, self._root_dir, read_only=True)
                 pkg.file_root = self._file_root
-                self._validator = validation.Validator(pkg, self._validate_sip_name)
+                self._validator = validation.Validator(
+                    pkg, self._validate_sip_name, identify_formats=self._identify_formats)
                 self.result = self._validator.run(self._full, self.progressChanged.emit, self.isInterruptionRequested)
                 self.cancelled = self.control.cancel_requested or self.isInterruptionRequested()
                 for issue in self.result:
@@ -1346,7 +1349,7 @@ class Backend(QObject):
                 self.message.emit("Validierung", "Bestätigen Sie die Identität und starten Sie die Validierung erneut.")
                 return
             self._validation_operator = self.auditOperator
-        validator = validation.Validator(self._pkg, self.validateSipName)
+        validator = validation.Validator(self._pkg, self.validateSipName, identify_formats=full)
         self._worker = ValidationWorker(validator, full, self)
         self._task_control = self._worker.control
         self._worker.control.state_changed = self.taskStateChanged.emit
@@ -1473,7 +1476,8 @@ class Backend(QObject):
         pkg = self._pkg
         if pkg is None:
             return
-        attached = [i for i in self._full_issues if i["checkId"] not in FILE_SYSTEM_CHECKS
+        attached = [i for i in self._full_issues
+                if i["checkId"] not in FILE_SYSTEM_CHECKS and i["checkId"] != DROID_FORMAT_CHECK
                     and (not i["key"] or self._is_attached(pkg.element(i["key"])))]
         if self._had_full_run:
             validator = validation.Validator(pkg, self.validateSipName)

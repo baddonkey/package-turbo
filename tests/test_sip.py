@@ -21,6 +21,28 @@ def test_open_invalid_folder(tmp_path):
         SipPackage.open_folder(tmp_path)
 
 
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+@pytest.mark.parametrize("delivery_type", ["GEVER", "FILES"])
+def test_metadata_is_xml_stored_under_header_for_each_release(tmp_path, version, delivery_type):
+    from xml.etree import ElementTree
+    from ph_backend import package_factory
+
+    pkg = package_factory.create_package(
+        tmp_path, f"SIP_20261107_Test_MetadataLocation_{version}_{delivery_type}", "Test",
+        delivery_type=delivery_type, version=version)
+    metadata = pkg.file_root / "header" / "metadata.xml"
+
+    assert metadata.is_file()
+    assert ElementTree.parse(metadata).getroot().tag == pkg.root.tag
+    pkg.save()
+    reopened = SipPackage.open_folder(pkg.root_dir)
+    assert reopened.metadata_path.relative_to(reopened.file_root).as_posix() == "header/metadata.xml"
+
+    metadata.rename(pkg.file_root / "content" / "metadata.xml")
+    with pytest.raises(InvalidPackageError, match=r"Datei metadata\.xml fehlt"):
+        SipPackage.open_folder(pkg.root_dir)
+
+
 def test_open_standalone_metadata_is_read_only(sip_dir, tmp_path):
     copy = tmp_path / "metadata.xml"
     copy.write_bytes((sip_dir / "header" / "metadata.xml").read_bytes())
