@@ -17,7 +17,11 @@ ApplicationWindow {
     property bool closeConfirmed: false
     property string exportTarget: ""
     property string reportTarget: ""
+    property bool auditExportRedacted: false
+    property string auditExportMetsVersion: "2"
     property string maximized: ""
+    property var eventDetailData: ({})
+    property bool showRawEventDetails: false
 
     readonly property var defaultLayout: ({ leftWidth: 460, classificationHeight: 420, actionsHeight: 300 })
 
@@ -45,6 +49,19 @@ ApplicationWindow {
             return
         window.contentItem.forceActiveFocus()
         Qt.callLater(() => backend.save())
+    }
+
+    function openNewPackageDialog() {
+        if (backend.auditOperator.trim().length > 0) {
+            newPackageDialog.open()
+            return
+        }
+        inputDialog.ask(qsTr("Identität bestätigen"), qsTr("Erstellt durch"), "", name => {
+            if (!name.trim())
+                return
+            backend.auditOperator = name.trim()
+            newPackageDialog.open()
+        })
     }
 
     function proceedAfterSave() {
@@ -109,6 +126,12 @@ ApplicationWindow {
         return item && typeof item.cut === "function" && typeof item.paste === "function" ? item : null
     }
 
+    function auditValueText(value) {
+        if (value === null || value === undefined)
+            return qsTr("(leer)")
+        return typeof value === "object" ? JSON.stringify(value) : String(value)
+    }
+
     onClosing: function (close) {
         if (backend.busy) {
             close.accepted = false
@@ -144,7 +167,7 @@ ApplicationWindow {
         Menu {
             id: packageMenu
             title: qsTr("&Paket")
-            Action { text: qsTr("Neues Paket erstellen..."); shortcut: StandardKey.New; onTriggered: guarded(() => newPackageDialog.open()) }
+            Action { text: qsTr("Neues Paket erstellen..."); shortcut: StandardKey.New; onTriggered: guarded(() => window.openNewPackageDialog()) }
             Action { text: qsTr("Paket öffnen..."); shortcut: StandardKey.Open; onTriggered: guarded(() => { openFolderDialog.readOnly = false; openFolderDialog.open() }) }
             Action { text: qsTr("Paket schreibgeschützt öffnen..."); onTriggered: guarded(() => { openFolderDialog.readOnly = true; openFolderDialog.open() }) }
             Action { text: qsTr("metadata.xml öffnen..."); onTriggered: guarded(() => openMetadataDialog.open()) }
@@ -152,6 +175,11 @@ ApplicationWindow {
             Action { text: qsTr("Speichern"); shortcut: StandardKey.Save; enabled: backend.hasPackage && !backend.readOnly && !backend.busy; onTriggered: window.savePackage() }
             Action { text: qsTr("Paket zippen..."); enabled: backend.hasSip; onTriggered: zipDialog.open() }
             Action { text: qsTr("metadata.xml exportieren..."); enabled: backend.hasPackage; onTriggered: exportXmlDialog.open() }
+            Action {
+                text: qsTr("PREMIS/METS exportieren...")
+                enabled: backend.hasSip && backend.hasHistory && !backend.busy && !backend.dirty
+                onTriggered: auditExportDialog.open()
+            }
             MenuSeparator {}
             Menu {
                 id: reportsSubMenu
@@ -292,7 +320,7 @@ ApplicationWindow {
             anchors.fill: parent
             spacing: 2
 
-            ToolButton { text: qsTr("Neues Paket"); onClicked: guarded(() => newPackageDialog.open()) }
+            ToolButton { text: qsTr("Neues Paket"); onClicked: guarded(() => window.openNewPackageDialog()) }
             ToolButton { text: qsTr("Paket öffnen"); onClicked: guarded(() => { openFolderDialog.readOnly = false; openFolderDialog.open() }) }
             ToolButton { objectName: "savePackageButton"; text: qsTr("Speichern"); enabled: backend.hasPackage && !backend.readOnly && !backend.busy; onClicked: window.savePackage() }
             ToolButton {
@@ -553,8 +581,12 @@ ApplicationWindow {
                     }
                     HistoryView {
                         onCleanupRequested: storageCleanupDialog.open()
+                        onExportRequested: auditExportDialog.open()
                         onDetailsRequested: function(text) {
                             eventDetails.text = text
+                            try { window.eventDetailData = JSON.parse(text) }
+                            catch (error) { window.eventDetailData = ({}) }
+                            window.showRawEventDetails = false
                             eventDialog.open()
                         }
                     }
@@ -676,7 +708,7 @@ ApplicationWindow {
             }
         }
 
-        MenuItem { text: qsTr("Neuer Ordner..."); enabled: packageNavMenu.writable && packageNavMenu.kind === "ordner"; onTriggered: { const parent = packageNavMenu.key; inputDialog.ask(qsTr("Neuer Ordner"), qsTr("Name (erlaubt: A-Z a-z 0-9 _ . -)"), "", name => fileOps.newFolder(parent, name)) } }
+        MenuItem { text: qsTr("Neuer Ordner..."); enabled: packageNavMenu.writable && packageNavMenu.kind === "ordner"; onTriggered: { const parent = packageNavMenu.key; inputDialog.ask(qsTr("Neuer Ordner"), qsTr("Name (ASCII-Buchstaben, Ziffern, ! # $ % ( ) + , - . = @ [ ] { } ~ _ und Leerzeichen)"), "", name => fileOps.newFolder(parent, name)) } }
         MenuItem { text: qsTr("Dateien importieren..."); enabled: packageNavMenu.writable && packageNavMenu.kind === "ordner"; onTriggered: importFilesDialog.open() }
         MenuItem { text: qsTr("Ordner importieren..."); enabled: packageNavMenu.writable && packageNavMenu.kind === "ordner"; onTriggered: importFolderDialog.open() }
         MenuItem { text: qsTr("Umbenennen..."); enabled: packageNavMenu.writable && (packageNavMenu.kind === "ordner" || packageNavMenu.kind === "datei"); onTriggered: { const target = packageNavMenu.key; inputDialog.ask(qsTr("Umbenennen"), qsTr("Neuer Name (der Originalname bleibt erhalten)"), "", name => fileOps.rename(target, name)) } }
@@ -759,6 +791,22 @@ ApplicationWindow {
         onAccepted: backend.exportMetadata(selectedFile)
     }
     FileDialog {
+        id: exportPremisDialog
+        objectName: "auditPremisFileDialog"
+        title: qsTr("PREMIS XML exportieren")
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "xml"
+        nameFilters: [qsTr("PREMIS XML (*.xml)")]
+        onAccepted: backend.exportPremis(selectedFile, window.auditExportRedacted)
+    }
+    FolderDialog {
+        id: exportAuditBundleDialog
+        objectName: "auditBundleFolderDialog"
+        title: qsTr("Ordner für SIP/METS/PREMIS-Export auswählen")
+        onAccepted: backend.exportAuditBundle(selectedFolder, window.auditExportRedacted,
+                                              window.auditExportMetsVersion)
+    }
+    FileDialog {
         id: exportTableDialog
         title: qsTr("Tabelle exportieren")
         fileMode: FileDialog.SaveFile
@@ -808,6 +856,19 @@ ApplicationWindow {
     }
 
     InputDialog { id: inputDialog; objectName: "inputDialog" }
+    AuditExportDialog {
+        id: auditExportDialog
+        objectName: "auditExportDialog"
+        onPremisExportRequested: function(redactValues) {
+            window.auditExportRedacted = redactValues
+            exportPremisDialog.open()
+        }
+        onBundleExportRequested: function(redactValues, metsVersion) {
+            window.auditExportRedacted = redactValues
+            window.auditExportMetsVersion = metsVersion
+            exportAuditBundleDialog.open()
+        }
+    }
     NewPackageDialog { id: newPackageDialog; objectName: "newPackageDialog" }
     MassAssignDialog { id: massAssignDialog; objectName: "massAssignDialog" }
     MassEditDialog { id: massEditDialog; objectName: "massEditDialog" }
@@ -825,11 +886,76 @@ ApplicationWindow {
         standardButtons: Dialog.Close
         ScrollView {
             anchors.fill: parent
-            TextArea {
-                id: eventDetails
-                readOnly: true
-                selectByMouse: true
-                wrapMode: TextEdit.Wrap
+            ColumnLayout {
+                width: eventDialog.availableWidth
+                spacing: 8
+
+                Label {
+                    Layout.fillWidth: true
+                    visible: (window.eventDetailData.changeSummary || []).length > 0
+                    text: qsTr("Änderungen")
+                    font.bold: true
+                }
+                Repeater {
+                    model: window.eventDetailData.changeSummary || []
+                    delegate: ColumnLayout {
+                        required property var modelData
+                        Layout.fillWidth: true
+                        spacing: 3
+                        Label {
+                            Layout.fillWidth: true
+                            text: modelData.field ? modelData.field + "  ·  " + modelData.path : modelData.path
+                            font.bold: true
+                            wrapMode: Text.WrapAnywhere
+                        }
+                        GridLayout {
+                            Layout.fillWidth: true
+                            columns: 2
+                            Label { text: qsTr("Vorher") }
+                            Label {
+                                Layout.fillWidth: true
+                                text: window.auditValueText(modelData.before)
+                                wrapMode: Text.WrapAnywhere
+                            }
+                            Label { text: qsTr("Nachher") }
+                            Label {
+                                Layout.fillWidth: true
+                                text: window.auditValueText(modelData.after)
+                                wrapMode: Text.WrapAnywhere
+                            }
+                        }
+                        Rectangle { Layout.fillWidth: true; height: 1; color: palette.mid }
+                    }
+                }
+                Label {
+                    Layout.fillWidth: true
+                    visible: (window.eventDetailData.deletedObjects || []).length > 0
+                    text: qsTr("Gelöschte Objekte")
+                    font.bold: true
+                }
+                Repeater {
+                    model: window.eventDetailData.deletedObjects || []
+                    delegate: Label {
+                        required property var modelData
+                        Layout.fillWidth: true
+                        text: modelData.kind + ": " + modelData.label + "  ·  " + modelData.path
+                              + (modelData.identifier ? "  ·  " + modelData.identifier : "")
+                        wrapMode: Text.WrapAnywhere
+                    }
+                }
+                ToolButton {
+                    text: window.showRawEventDetails ? qsTr("Rohdaten ausblenden") : qsTr("Rohdaten anzeigen")
+                    onClicked: window.showRawEventDetails = !window.showRawEventDetails
+                }
+                TextArea {
+                    id: eventDetails
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 240
+                    visible: window.showRawEventDetails
+                    readOnly: true
+                    selectByMouse: true
+                    wrapMode: TextEdit.Wrap
+                }
             }
         }
     }

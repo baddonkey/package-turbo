@@ -175,6 +175,96 @@ def test_empty_premis_export_is_valid(tmp_path):
     etree.XMLSchema(etree.parse(str(schema_path))).assertValid(etree.fromstring(journal.premis_xml()))
 
 
+@pytest.mark.parametrize("redact_values", [False, True])
+def test_premis_export_models_file_fixity_and_metadata_entities(tmp_path, redact_values):
+    journal = AuditJournal(tmp_path / "journal.sqlite3")
+    _append(journal, detail={"objectId": "_document-1", "path": "/paket/ablieferung/dokument[1]",
+                             "field": "titel", "oldValue": "Private title", "newValue": "New title"})
+    journal.append("file modification", agent_identifier="operator:test", software_version="0.1.0",
+                   detail={"path": "content/private-record.pdf",
+                           "before": {"type": "file", "size": 3, "sha256": "a" * 64},
+                           "after": {"type": "file", "size": 4, "sha256": "b" * 64}})
+
+    xml = journal.premis_xml(redact_values=redact_values)
+    root = etree.fromstring(xml)
+    schema_path = Path(__file__).resolve().parent.parent / "ph_backend/resources/preservation/premis-v3-0.xsd"
+    etree.XMLSchema(etree.parse(str(schema_path))).assertValid(root)
+    namespaces = {"p": PREMIS_NS}
+    file_objects = root.xpath("p:object[@xsi:type='premis:file']", namespaces={**namespaces, "xsi": "http://www.w3.org/2001/XMLSchema-instance"})
+    entity_objects = root.xpath("p:object[@xsi:type='premis:intellectualEntity']",
+                                namespaces={**namespaces, "xsi": "http://www.w3.org/2001/XMLSchema-instance"})
+    assert len(file_objects) == 2
+    assert len(entity_objects) == 1
+    digests = {obj.xpath("string(p:objectCharacteristics/p:fixity/p:messageDigest)", namespaces=namespaces)
+               for obj in file_objects}
+    assert digests == {"a" * 64, "b" * 64}
+    linked_objects = set(root.xpath("p:event/p:linkingObjectIdentifier/p:linkingObjectIdentifierValue/text()",
+                                    namespaces=namespaces))
+    object_ids = set(root.xpath("p:object/p:objectIdentifier/p:objectIdentifierValue/text()",
+                                namespaces=namespaces))
+    assert object_ids <= linked_objects | {journal.package_identifier}
+    assert ("content/private-record.pdf" in xml.decode("utf-8")) is not redact_values
+    assert (b"Private title" in xml) is not redact_values
+
+
+def test_premis_export_relates_metadata_hierarchy_and_referenced_files(tmp_path):
+        journal = AuditJournal(tmp_path / "journal.sqlite3")
+        metadata = b'''<paket xmlns="http://bar.admin.ch/arelda/v5" schemaVersion="5.1">
+            <ablieferung id="_delivery">
+                <dossier id="_dossier"><dokument id="_document"><dateiRef>_file-1</dateiRef></dokument></dossier>
+            </ablieferung>
+            <inhaltsverzeichnis><ordner><name>content</name>
+                <datei id="_file-1"><name>report.pdf</name></datei>
+            </ordner></inhaltsverzeichnis>
+        </paket>'''
+        manifest = {"content/report.pdf": {"type": "file", "size": 12, "sha256": "a" * 64}}
+
+        xml = journal.premis_xml(metadata_xml=metadata, sip_manifest=manifest)
+        root = etree.fromstring(xml)
+        schema_path = Path(__file__).resolve().parent.parent / "ph_backend/resources/preservation/premis-v3-0.xsd"
+        etree.XMLSchema(etree.parse(str(schema_path))).assertValid(root)
+        namespaces = {"p": PREMIS_NS}
+        relationships = {}
+        for object_element in root.xpath("p:object", namespaces=namespaces):
+                object_id = object_element.xpath("string(p:objectIdentifier/p:objectIdentifierValue)", namespaces=namespaces)
+                relationships[object_id] = {
+                        (relationship.xpath("string(p:relationshipSubType)", namespaces=namespaces),
+                         relationship.xpath("string(p:relatedObjectIdentifier/p:relatedObjectIdentifierValue)",
+                                                                namespaces=namespaces))
+                        for relationship in object_element.xpath("p:relationship", namespaces=namespaces)
+                }
+
+        entity_id = lambda identity: "urn:package-turbo:xml:" + hashlib.sha256(
+                (journal.package_identifier + "\0xml\0id:" + identity).encode("utf-8")).hexdigest()
+        file_id = "urn:package-turbo:file:" + hashlib.sha256(
+                (journal.package_identifier + "\0content/report.pdf").encode("utf-8")).hexdigest() + ":" + "a" * 64
+        assert ("has part", entity_id("_dossier")) in relationships[entity_id("_delivery")]
+        assert ("has part", entity_id("_document")) in relationships[entity_id("_dossier")]
+        assert ("has part", file_id) in relationships[entity_id("_document")]
+
+
+@pytest.mark.parametrize("redact_values", [False, True])
+def test_premis_deleted_entity_uses_stable_xml_id_as_source_object(tmp_path, redact_values):
+    journal = AuditJournal(tmp_path / "journal.sqlite3")
+    journal.append("package operation", agent_identifier="operator:test", software_version="0.1.0",
+                   detail={"xmlChanges": [
+                       {"path": "/paket/ablieferung/dossier[1]/@id", "oldValue": "_dossier-1", "newValue": None},
+                       {"path": "/paket/ablieferung/dossier[1]/titel/text()", "oldValue": "Old title", "newValue": None},
+                   ]})
+
+    root = etree.fromstring(journal.premis_xml(redact_values=redact_values))
+    schema_path = Path(__file__).resolve().parent.parent / "ph_backend/resources/preservation/premis-v3-0.xsd"
+    etree.XMLSchema(etree.parse(str(schema_path))).assertValid(root)
+    expected = "urn:package-turbo:xml:" + hashlib.sha256(
+        (journal.package_identifier + "\0xml\0id:_dossier-1").encode("utf-8")).hexdigest()
+    namespaces = {"p": PREMIS_NS}
+    object_ids = root.xpath("p:object/p:objectIdentifier/p:objectIdentifierValue/text()", namespaces=namespaces)
+    linked_ids = root.xpath("p:event/p:linkingObjectIdentifier/p:linkingObjectIdentifierValue/text()",
+                            namespaces=namespaces)
+    assert expected in object_ids and expected in linked_ids
+    assert (b"/paket/ablieferung/dossier[1]" in etree.tostring(root)) is not redact_values
+
+
 @pytest.mark.parametrize("version", ["2", "1.12.1"])
 @pytest.mark.parametrize("redact_values", [False, True])
 def test_mets_companion_validates_with_fixity_and_resolved_ids(tmp_path, version, redact_values):

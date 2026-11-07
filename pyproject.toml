@@ -10,6 +10,8 @@ requires-python = ">=3.11"
 dependencies = [
     "PySide6>=6.9",
     "lxml>=5.0",
+    "msoffcrypto-tool>=6.1",
+    "pypdf>=5.0",
     "rfc8785>=0.1,<1",
 ]
 
@@ -50,6 +52,7 @@ files = [
     "App/PreferencesDialog.qml",
     "App/AdditionalDataEditor.qml",
     "App/HistoryView.qml",
+    "App/AuditExportDialog.qml",
     "App/StorageCleanupDialog.qml",
     "App/RepeatedTextEditor.qml",
     "App/ReferenceAttributesEditor.qml",

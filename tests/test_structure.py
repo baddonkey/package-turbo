@@ -80,6 +80,34 @@ def test_files_schema_does_not_offer_gever_processes(tmp_path, version):
     assert _schema_errors(pkg) == []
 
 
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+def test_files_classification_relationships_follow_release_schema(tmp_path, version):
+    pkg = package_factory.create_package(tmp_path, f"SIP_20261107_Test_FILES_Classification_{version}", "Test",
+                                         version=version, delivery_type="FILES")
+    top_position = next(pkg.iter_kind("ordnungssystemposition"))
+    leaf_position = structure.add_objects(pkg, top_position, "ordnungssystemposition")[0]
+
+    assert "dossier" not in structure.allowed_children(pkg, top_position)
+    with pytest.raises(structure.StructureError):
+        structure.add_objects(pkg, top_position, "dossier")
+    direct_dossier = structure.add_objects(pkg, leaf_position, "dossier")[0]
+
+    supports_mappe = version in ("1.2", "1.3")
+    assert ("mappe" in structure.allowed_children(pkg, leaf_position)) is supports_mappe
+    if supports_mappe:
+        mappe = structure.add_objects(pkg, leaf_position, "mappe")[0]
+        mapped_dossier = structure.add_objects(pkg, mappe, "dossier")[0]
+        assert mapped_dossier.getparent() is mappe
+
+    assert direct_dossier.getparent() is leaf_position
+    assert _schema_errors(pkg) == []
+    pkg.save()
+    reopened = SipPackage.open_folder(pkg.root_dir)
+    assert _schema_errors(reopened) == []
+    assert len(list(reopened.iter_kind("dossier"))) == (2 if supports_mappe else 1)
+    assert len(list(reopened.iter_kind("mappe"))) == (1 if supports_mappe else 0)
+
+
 def test_new_files_package(tmp_path):
     pkg = package_factory.create_package(tmp_path, "SIP_20260104_Amt_X", "Amt", delivery_type="FILES")
     assert pkg.delivery_type == "FILES" and _schema_errors(pkg) == []
@@ -91,10 +119,16 @@ def test_creation_preserves_selected_schema_version(tmp_path, version, schema_ve
     pkg = package_factory.create_package(tmp_path, "SIP_20260104_Amt_Version", "Amt",
                                          delivery_type=delivery_type, version=version)
     assert pkg.root.get("schemaVersion") == schema_version
+    bundled_xsds = xsd_info.schema_directory(schema_version)
+    source_files = {path.name: path.read_bytes() for path in bundled_xsds.glob("*.xsd")}
+    package_files = {path.name: path.read_bytes() for path in (pkg.file_root / "header" / "xsd").glob("*.xsd")}
+    assert package_files == source_files
     pkg.set_text(pkg.delivery, "ablieferungsnummer", "42")
     pkg.save()
     reopened = SipPackage.open_folder(pkg.root_dir)
     assert reopened.root.get("schemaVersion") == schema_version
+    reopened_files = {path.name: path.read_bytes() for path in (reopened.file_root / "header" / "xsd").glob("*.xsd")}
+    assert reopened_files == source_files
     assert _schema_errors(reopened) == []
 
 
@@ -178,10 +212,10 @@ def test_csv_import_requires_nummer(tmp_path):
 def test_build_import_assign_and_validate(new_pkg, tmp_path):
     pkg = new_pkg
     source = tmp_path / "ablage"
-    (source / "Gruppe A" / "Dossier 1").mkdir(parents=True)
-    (source / "Gruppe A" / "Dossier 1" / "brief.pdf").write_bytes(b"%PDF-1.4 a")
-    (source / "Gruppe A" / "Dossier 1" / "notiz.txt").write_bytes(b"b")
-    (source / "Gruppe A" / "lose.pdf").write_bytes(b"%PDF-1.4 c")
+    (source / "Gruppe Ä" / "Dossier 1").mkdir(parents=True)
+    (source / "Gruppe Ä" / "Dossier 1" / "brief&final.pdf").write_bytes(b"%PDF-1.4 a")
+    (source / "Gruppe Ä" / "Dossier 1" / "notiz.txt").write_bytes(b"b")
+    (source / "Gruppe Ä" / "lose.pdf").write_bytes(b"%PDF-1.4 c")
     content = next(o for o in pkg.iter_kind("ordner") if pkg.text(o, "name") == "content")
     stats = files.import_paths(pkg, content, [source])
     assert stats["files"] == 3 and stats["folders"] == 3
@@ -221,7 +255,7 @@ def test_rename_delete_and_references(new_pkg, tmp_path):
     content = next(o for o in pkg.iter_kind("ordner") if pkg.text(o, "name") == "content")
     folder = files.create_folder(pkg, content, "akten")
     with pytest.raises(files.FileOperationError):
-        files.create_folder(pkg, content, "nicht erlaubt")
+        files.create_folder(pkg, content, "nicht&erlaubt")
     src = tmp_path / "a.pdf"
     src.write_bytes(b"%PDF-1.4")
     files.import_paths(pkg, folder, [src])

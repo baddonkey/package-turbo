@@ -38,6 +38,26 @@
         <source>Merkmal entfernen</source>
         <translation>Supprimer la caractéristique</translation>
     </message>
+    <message>
+        <source>Dateieigenschaften</source>
+        <translation>Propriétés du fichier</translation>
+    </message>
+    <message>
+        <source>Technische Dateieigenschaften als wiederholte Name-Wert-Paare.</source>
+        <translation>Propriétés techniques du fichier sous forme de paires nom-valeur répétées.</translation>
+    </message>
+    <message>
+        <source>keine Eigenschaften</source>
+        <translation>Aucune propriété</translation>
+    </message>
+    <message>
+        <source>+ Eigenschaft</source>
+        <translation>+ Propriété</translation>
+    </message>
+    <message>
+        <source>Eigenschaft entfernen</source>
+        <translation>Supprimer la propriété</translation>
+    </message>
 </context>
 <context>
     <name>DataTable</name>
@@ -139,6 +159,26 @@
         <location filename="../Main.qml" line="133"/>
         <source>metadata.xml exportieren...</source>
         <translation>Exporter metadata.xml...</translation>
+    </message>
+    <message>
+        <source>PREMIS/METS exportieren...</source>
+        <translation>Exporter PREMIS/METS...</translation>
+    </message>
+    <message>
+        <source>PREMIS XML exportieren</source>
+        <translation>Exporter PREMIS XML</translation>
+    </message>
+    <message>
+        <source>PREMIS XML (*.xml)</source>
+        <translation>PREMIS XML (*.xml)</translation>
+    </message>
+    <message>
+        <source>Ordner für SIP/METS/PREMIS-Export auswählen</source>
+        <translation>Choisir le dossier d'export SIP/METS/PREMIS</translation>
+    </message>
+    <message>
+        <source>Name (ASCII-Buchstaben, Ziffern, ! # $ % ( ) + , - . = @ [ ] { } ~ _ und Leerzeichen)</source>
+        <translation>Nom (lettres ASCII, chiffres, ! # $ % ( ) + , - . = @ [ ] { } ~ _ et espaces)</translation>
     </message>
     <message>
         <location filename="../Main.qml" line="137"/>
@@ -903,6 +943,13 @@ Création, édition et contrôle de versements numériques
 
 Formats de fichiers selon le catalogue des formats d'archivage de la KOST-CECO (KaD).</translation>
     </message>
+    <message><source>(leer)</source><translation>(vide)</translation></message>
+    <message><source>Vorher</source><translation>Avant</translation></message>
+    <message><source>Nachher</source><translation>Après</translation></message>
+    <message><source>Gelöschte Objekte</source><translation>Objets supprimés</translation></message>
+    <message><source>Dateiinhalt</source><translation>Contenu du fichier</translation></message>
+    <message><source>Rohdaten anzeigen</source><translation>Afficher les données brutes</translation></message>
+    <message><source>Rohdaten ausblenden</source><translation>Masquer les données brutes</translation></message>
 </context>
 <context>
     <name>MassAssignDialog</name>
@@ -1607,5 +1654,32 @@ Ouvrez ou créez un paquet, ou glissez le répertoire SIP ici.</translation>
         <source>Bestätigen</source>
         <translation>Confirmer</translation>
     </message>
+</context>
+<context>
+    <name>HistoryView</name>
+    <message><source>%1 / %2 Ereignisse</source><translation>%1 / %2 événements</translation></message>
+    <message><source>Kopieren</source><translation>Copier</translation></message>
+    <message><source>PREMIS/METS exportieren...</source><translation>Exporter PREMIS/METS...</translation></message>
+    <message><source>Vor dem Export speichern</source><translation>Enregistrer avant l'export</translation></message>
+    <message><source>Wiederherstellen</source><translation>Récupérer</translation></message>
+    <message><source>Speicher bereinigen...</source><translation>Nettoyer le stockage...</translation></message>
+    <message><source>Historie durchsuchen</source><translation>Rechercher dans l'historique</translation></message>
+    <message><source>Alle Ereignisse</source><translation>Tous les événements</translation></message>
+    <message><source>Alle Ergebnisse</source><translation>Tous les résultats</translation></message>
+    <message><source>Erfolgreich</source><translation>Réussi</translation></message>
+    <message><source>Fehler</source><translation>Échec</translation></message>
+    <message><source>Verworfen</source><translation>Abandonné</translation></message>
+</context>
+<context>
+    <name>AuditExportDialog</name>
+    <message><source>PREMIS/METS exportieren</source><translation>Exporter PREMIS/METS</translation></message>
+    <message><source>Wählen Sie, ob Ereignisdetails im PREMIS-Dokument enthalten sein sollen.</source><translation>Choisissez si les détails des événements doivent figurer dans le document PREMIS.</translation></message>
+    <message><source>Vollständig: Ereignisdetails einschliessen</source><translation>Complet : inclure les détails des événements</translation></message>
+    <message><source>Redigiert: Ereignisdetails auslassen; Bedienerkennung und Prüfsummen bleiben sichtbar</source><translation>Expurgé : omettre les détails des événements ; l'identifiant de l'opérateur et les sommes de contrôle restent visibles</translation></message>
+    <message><source>METS-Version</source><translation>Version METS</translation></message>
+    <message><source>Nur PREMIS XML...</source><translation>PREMIS XML uniquement...</translation></message>
+    <message><source>SIP + METS/PREMIS...</source><translation>SIP + METS/PREMIS...</translation></message>
+    <message><source>METS 2</source><translation>METS 2</translation></message>
+    <message><source>METS 1.12.1</source><translation>METS 1.12.1</translation></message>
 </context>
 </TS>

@@ -8,8 +8,12 @@ permissions:
   contents: read
 
 jobs:
-  windows-tests:
-    runs-on: windows-latest
+  tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -18,25 +22,9 @@ jobs:
       - name: Install package and test dependencies
         run: python -m pip install -e ".[dev]"
       - name: Download and verify official KOST v1.3 FILES fixture
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $archive = Join-Path $env:RUNNER_TEMP 'SIP_20260421_KOST_eCH1.3F_1a-3d-IO.zip'
-          $url = 'https://kost-ceco.ch/cms/dl/4e987f3ea41c4da065b191e39c34cf8c/SIP_20260421_KOST_eCH1.3F_1a-3d-IO.zip?target=1'
-          $expected = 'dc4474a3cfe654f7e459cd594cd43d91f7e563b98c39e809417e6778ba023c65'
-          Invoke-WebRequest -Uri $url -OutFile $archive
-          $actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($actual -ne $expected) {
-            throw "KOST fixture SHA-256 mismatch: expected $expected, got $actual"
-          }
-          $fixture = Join-Path $env:GITHUB_WORKSPACE 'samples/SIP_20260421_KOST_eCH1.3F_1a-3d-IO'
-          New-Item -ItemType Directory -Force -Path $fixture | Out-Null
-          Expand-Archive -LiteralPath $archive -DestinationPath $fixture
-          if (-not (Test-Path (Join-Path $fixture 'header/metadata.xml')) -or
-              -not (Test-Path (Join-Path $fixture 'content'))) {
-            throw 'The downloaded KOST archive does not contain a complete SIP.'
-          }
+        run: python tools/prepare_kost_fixture.py
       - name: Run tests with required conformance fixture
         env:
           PACKAGE_TURBO_REQUIRE_KOST_FIXTURE: "1"
+          QT_QPA_PLATFORM: offscreen
         run: python -m pytest -q

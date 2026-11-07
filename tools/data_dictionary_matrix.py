@@ -21,6 +21,7 @@ STRUCTURAL_FIELDS = {"ablieferung", "ablieferungstyp", "provenienz", "ordnungssy
 REFERENCE_ATTRIBUTES = {"version", "repraesentation", "information", "reihung"}
 TEST_EVIDENCE = {
     "autor": "tests/test_features.py::test_repeated_authors_preserve_order_and_roundtrip",
+    "eigenschaft": "tests/test_features.py::test_file_eigenschaft_roundtrips_in_editor_and_sip",
     "vorgang": "tests/test_structure.py::test_structured_process_activity_creation_and_editing",
     "aktivitaet": "tests/test_structure.py::test_structured_process_activity_creation_and_editing",
     "mappe": "tests/test_structure.py::test_recursive_mappen_use_contextual_schema_type",
@@ -36,6 +37,8 @@ def _text(value) -> str:
 def candidate_surface(xsd_name: str) -> str:
     if xsd_name in REFERENCE_ATTRIBUTES:
         return "ph_backend/sip.py; ph_backend/editor.py; App/ReferenceAttributesEditor.qml"
+    if xsd_name == "eigenschaft":
+        return "ph_backend/sip.py; ph_backend/editor.py; App/AdditionalDataEditor.qml"
     if xsd_name in STRUCTURAL_FIELDS:
         return "ph_backend/schema.py; ph_backend/structure.py; ph_backend/sip.py; ph_backend/validation.py"
     return "ph_backend/schema.py; ph_backend/editor.py; App/MetadataEditor.qml"

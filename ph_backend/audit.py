@@ -189,7 +189,8 @@ class AuditJournal:
                            (payload["sequence"], digest))
         return {"payload": json.loads(canonical), "digest": digest, "previousDigest": header["digest"]}
 
-    def premis_xml(self, redact_values: bool = False) -> bytes:
+    def premis_xml(self, redact_values: bool = False, *, metadata_xml: bytes | None = None,
+                   sip_manifest: dict | None = None) -> bytes:
         records = self.records()
         root = etree.Element(f"{{{PREMIS_NS}}}premis", nsmap={"premis": PREMIS_NS, "xsi": XSI_NS}, version="3.0")
 
@@ -205,12 +206,218 @@ class AuditJournal:
             child(container, name + "Value", value)
             return container
 
+        def part_of_package(parent):
+            relationship = child(parent, "relationship")
+            child(relationship, "relationshipType", "structural")
+            child(relationship, "relationshipSubType", "is part of")
+            related_object = child(relationship, "relatedObjectIdentifier")
+            child(related_object, "relatedObjectIdentifierType", "local")
+            child(related_object, "relatedObjectIdentifierValue", self.package_identifier)
+
+        object_definitions = {}
+        event_object_links = []
+
+        def file_object(path: str, state: dict | None) -> str | None:
+            if not isinstance(state, dict) or state.get("type") != "file":
+                return None
+            digest = state.get("sha256", "")
+            if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
+                return None
+            path_digest = hashlib.sha256((self.package_identifier + "\0" + path).encode("utf-8")).hexdigest()
+            object_id = f"urn:package-turbo:file:{path_digest}:{digest}"
+            object_definitions.setdefault(object_id, {"type": "file", "digest": digest, "size": state.get("size")})
+            return object_id
+
+        def xml_object(identity: str) -> str:
+            identity_digest = hashlib.sha256((self.package_identifier + "\0xml\0" + identity).encode("utf-8"))
+            object_id = "urn:package-turbo:xml:" + identity_digest.hexdigest()
+            object_definitions.setdefault(object_id, {"type": "intellectualEntity"})
+            return object_id
+
+        def gather_event_objects(record: dict) -> dict[str, set[str]]:
+            payload = record["payload"]
+            detail = payload["detail"]
+            links = {self.package_identifier: set()}
+
+            def link(object_id: str | None, role: str = ""):
+                if object_id:
+                    links.setdefault(object_id, set())
+                    if role:
+                        links[object_id].add(role)
+
+            def gather_change(change: dict, include_xml: bool = True):
+                if not isinstance(change, dict):
+                    return
+                path = change.get("path", "")
+                before, after = change.get("before"), change.get("after")
+                if isinstance(before, dict) or isinstance(after, dict):
+                    link(file_object(path, before), "source")
+                    link(file_object(path, after), "outcome")
+                elif include_xml and path and ("oldValue" in change or "newValue" in change):
+                    link(xml_object(path), "outcome")
+
+            xml_changes = detail.get("xmlChanges", []) + detail.get("changes", [])
+            xml_ids = {}
+            for change in xml_changes:
+                path = change.get("path", "") if isinstance(change, dict) else ""
+                if path.endswith("/@id"):
+                    xml_ids[path[:-4]] = (change.get("oldValue"), change.get("newValue"))
+
+            def owning_xml_ids(path: str) -> tuple[str | None, str | None]:
+                if "/@" in path:
+                    element_path = path.rsplit("/@", 1)[0]
+                elif path.endswith("/text()"):
+                    element_path = path[:-7]
+                else:
+                    element_path = path
+                while element_path:
+                    if element_path in xml_ids:
+                        old_id, new_id = xml_ids[element_path]
+                        return ((str(old_id) if old_id else None), (str(new_id) if new_id else None))
+                    if "/" not in element_path:
+                        break
+                    element_path = element_path.rsplit("/", 1)[0]
+                return None, None
+
+            for change in xml_changes:
+                if not isinstance(change, dict) or not change.get("path"):
+                    continue
+                path = change["path"]
+                if path.endswith("/@id"):
+                    old_id, new_id = change.get("oldValue"), change.get("newValue")
+                else:
+                    old_id, new_id = owning_xml_ids(path)
+                if old_id:
+                    link(xml_object("id:" + old_id), "source")
+                if new_id:
+                    link(xml_object("id:" + new_id), "outcome")
+                if not old_id and not new_id:
+                    if change.get("oldValue") is not None:
+                        link(xml_object(path), "source")
+                    if change.get("newValue") is not None:
+                        link(xml_object(path), "outcome")
+
+            for path, state in detail.get("manifest", {}).items():
+                link(file_object(path, state), "outcome")
+            gather_change(detail, include_xml=False)
+            for key in ("changes", "fileChanges"):
+                for change in detail.get(key, []):
+                    gather_change(change)
+            if detail.get("objectId") or (payload["eventType"] in ("metadata modification", "structural modification")
+                                            and detail.get("path")):
+                identity = ("id:" + str(detail["objectId"]) if detail.get("objectId")
+                            else str(detail["path"]))
+                link(xml_object(identity), "outcome")
+            if detail.get("beforeSha256") or detail.get("afterSha256"):
+                path = "header/metadata.xml"
+                for key, role in (("beforeSha256", "source"), ("afterSha256", "outcome")):
+                    digest = detail.get(key, "")
+                    if len(digest) == 64 and all(character in "0123456789abcdef" for character in digest):
+                        link(file_object(path, {"type": "file", "size": None, "sha256": digest}), role)
+            return links
+
+        for record in records:
+            event_object_links.append(gather_event_objects(record))
+
+        if metadata_xml is not None and sip_manifest is not None:
+            try:
+                metadata_root = etree.fromstring(
+                    metadata_xml, etree.XMLParser(resolve_entities=False, no_network=True, load_dtd=False))
+            except etree.XMLSyntaxError as exc:
+                raise AuditError("The SIP metadata snapshot is not valid XML.") from exc
+
+            entity_names = {"ablieferung", "archivischeNotiz", "archivischerVorgang", "dossier",
+                            "mappe", "dokument", "ordnungssystem", "ordnungssystemposition"}
+            entity_objects = {}
+
+            def local_name(element) -> str:
+                return etree.QName(element).localname if isinstance(element.tag, str) else ""
+
+            def element_text(element, name: str) -> str:
+                return next(((item.text or "").strip() for item in element
+                             if isinstance(item.tag, str) and local_name(item) == name), "")
+
+            for element in metadata_root.iter():
+                if local_name(element) in entity_names and element.get("id"):
+                    entity_objects[element] = xml_object("id:" + element.get("id"))
+
+            def relate(source_id: str | None, target_id: str | None, subtype: str) -> None:
+                if source_id and target_id and source_id in object_definitions and target_id in object_definitions:
+                    object_definitions[source_id].setdefault("relationships", set()).add((subtype, target_id))
+
+            for element, object_id in entity_objects.items():
+                ancestor = element.getparent()
+                while ancestor is not None and ancestor not in entity_objects:
+                    ancestor = ancestor.getparent()
+                if ancestor is not None:
+                    relate(entity_objects[ancestor], object_id, "has part")
+
+            file_paths_by_id = {}
+            toc = next((element for element in metadata_root.iter() if local_name(element) == "inhaltsverzeichnis"), None)
+
+            def walk_toc(element, base: PurePosixPath) -> None:
+                for item in element:
+                    item_name = local_name(item)
+                    if item_name not in ("ordner", "datei"):
+                        continue
+                    name = element_text(item, "name")
+                    if not name or name in (".", "..") or "/" in name or "\\" in name:
+                        continue
+                    path = base / name
+                    if item_name == "datei" and item.get("id"):
+                        file_paths_by_id.setdefault(item.get("id"), []).append(path.as_posix())
+                    elif item_name == "ordner":
+                        walk_toc(item, path)
+
+            if toc is not None:
+                walk_toc(toc, PurePosixPath())
+
+            for element, source_id in entity_objects.items():
+                for reference in element.iter():
+                    if local_name(reference) != "dateiRef":
+                        continue
+                    owner = reference.getparent()
+                    while owner is not None and owner not in entity_objects:
+                        owner = owner.getparent()
+                    if owner is None or entity_objects[owner] != source_id:
+                        continue
+                    for file_identifier in (reference.text or "").split():
+                        paths = file_paths_by_id.get(file_identifier, [])
+                        if len(paths) != 1:
+                            continue
+                        path = paths[0]
+                        file_id = file_object(path, sip_manifest.get(path))
+                        relate(source_id, file_id, "has part")
+
         package = child(root, "object")
         package.set(f"{{{XSI_NS}}}type", "premis:representation")
         identifier(package, "objectIdentifier", self.package_identifier)
+        for object_id, definition in sorted(object_definitions.items()):
+            object_element = child(root, "object")
+            object_element.set(f"{{{XSI_NS}}}type", "premis:" + definition["type"])
+            identifier(object_element, "objectIdentifier", object_id)
+            if definition["type"] == "file":
+                characteristics = child(object_element, "objectCharacteristics")
+                fixity = child(characteristics, "fixity")
+                child(fixity, "messageDigestAlgorithm", "SHA-256")
+                child(fixity, "messageDigest", definition["digest"])
+                if definition["size"] is not None:
+                    child(characteristics, "size", str(definition["size"]))
+                format_element = child(characteristics, "format")
+                designation = child(format_element, "formatDesignation")
+                child(designation, "formatName", "Unknown")
+                child(format_element, "formatNote", "Format identification is not asserted by this export.")
+            part_of_package(object_element)
+            for subtype, related_id in sorted(definition.get("relationships", ())):
+                relationship = child(object_element, "relationship")
+                child(relationship, "relationshipType", "structural")
+                child(relationship, "relationshipSubType", subtype)
+                related_object = child(relationship, "relatedObjectIdentifier")
+                child(related_object, "relatedObjectIdentifierType", "local")
+                child(related_object, "relatedObjectIdentifierValue", related_id)
         operators = set()
         software_versions = set()
-        for record in records:
+        for record, object_links in zip(records, event_object_links):
             payload = record["payload"]
             event = child(root, "event")
             identifier(event, "eventIdentifier", payload["eventIdentifier"], "URN")
@@ -235,7 +442,10 @@ class AuditJournal:
             software_id = "package-turbo:" + payload["softwareVersion"]
             software = identifier(event, "linkingAgentIdentifier", software_id)
             child(software, "linkingAgentRole", "executing program")
-            identifier(event, "linkingObjectIdentifier", self.package_identifier)
+            for object_id, roles in sorted(object_links.items()):
+                object_link = identifier(event, "linkingObjectIdentifier", object_id)
+                for role in sorted(roles):
+                    child(object_link, "linkingObjectRole", role)
             operators.add(payload["agentIdentifier"])
             software_versions.add(payload["softwareVersion"])
         for operator_id in sorted(operators):
@@ -251,7 +461,8 @@ class AuditJournal:
         return etree.tostring(root, encoding="UTF-8", xml_declaration=True, pretty_print=True)
 
     def mets_xml(self, package_filename: str, package_sha256: str, *, premis_filename: str = "premis.xml",
-                 version: str = "2", redact_values: bool = False) -> bytes:
+                 version: str = "2", redact_values: bool = False, metadata_xml: bytes | None = None,
+                 sip_manifest: dict | None = None) -> bytes:
         if version not in ("2", "1.12.1"):
             raise AuditError("Unsupported METS export version.")
         for filename in (package_filename, premis_filename):
@@ -263,7 +474,8 @@ class AuditJournal:
             raise AuditError("The package and PREMIS references must be different files.")
         if len(package_sha256) != 64 or any(character not in "0123456789abcdefABCDEF" for character in package_sha256):
             raise AuditError("The package needs a SHA-256 digest.")
-        premis_bytes = self.premis_xml(redact_values=redact_values)
+        premis_bytes = self.premis_xml(redact_values=redact_values, metadata_xml=metadata_xml,
+                          sip_manifest=sip_manifest)
         namespace = "http://www.loc.gov/METS/v2" if version == "2" else "http://www.loc.gov/METS/"
         xlink = "http://www.w3.org/1999/xlink"
         namespaces = {"mets": namespace}

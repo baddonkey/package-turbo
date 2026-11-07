@@ -63,11 +63,11 @@ Verification: 128 tests pass, including 24 journal/export tests, 16 metadata wor
 tests and native Qt history/operator rendering. The built wheel is also checked using
 isolated imports so source-checkout resources cannot conceal packaging omissions.
 
-Still pending: filesystem staging/rollback and per-file events/fixity, creation and
+Still pending at this milestone: filesystem staging/rollback and per-file events/fixity, creation and
 preservation-operation capture, XML-entity UUID mapping, package undo/redo, persisted
 draft recovery before Save, full history filtering/export UI, completed language
-catalogues and full standards/receiver-profile coverage. Initial package creation is
-not yet an audit event. Do not claim every package operation is fully audited.
+catalogues and full standards/receiver-profile coverage. Initial package creation was
+not yet an audit event at this milestone. Do not claim every package operation is fully audited.
 
 The filesystem transaction limitations from this milestone are addressed below. A crash
 before Save can still lose a metadata-only draft that has not joined a recorded file draft.
@@ -110,7 +110,8 @@ verifies staged imports, combined commit, retained original fixity, safe discard
 This implementation intentionally copies/hashes full packages synchronously. Incremental staging,
 background progress/cancellation, full package undo/redo, retention/pruning policy, metadata-only
 draft autosave, per-object PREMIS identity modelling, initial creation/validation/export events and
-complete history export/filter UI remain pending. Retained copies are not a user-facing Undo feature.
+complete history filtering remain pending at this milestone; export controls were wired later.
+Retained copies are not a user-facing Undo feature.
 
 These historical limitations are superseded for session Undo/Redo and metadata draft persistence
 by the fourth milestone below. Background/cancellable copying and retention controls remain pending.
@@ -153,8 +154,8 @@ Verification: 170 tests pass, including 5 standalone undo tests and native Qt sh
 checks. Isolated-wheel verification exercises staged reversals and compensating PREMIS events.
 
 At this milestone snapshot copying remained synchronous and potentially expensive. Background/cancellation and
-incremental storage are next; history filters/export UI, configurable retention/pruning, complete
-PREMIS object identities, creation/validation/export capture, translations, legal review and full
+incremental storage are next; history filters UI, configurable retention/pruning, complete
+PREMIS object identities, validation/export capture, translations, legal review and full
 standards coverage remain pending. Crashed processes can leave unreferenced session snapshot
 directories; automatic orphan cleanup is not yet implemented. Do not remove the whole companion
 or retained originals to bypass its storage limit.
@@ -197,7 +198,7 @@ filesystem call to return and does not discard previously accepted drafts. GUI-o
 mutation/serialization, model rebuilds, schema presentation and journal bookkeeping still
 execute on the GUI thread; not every possible large-package handler is now nonblocking.
 Full copies/hashes remain conservative and expensive. Incremental storage, retention controls,
-performance budgets on real large fixtures, history filters/export, comprehensive event/identity
+performance budgets on real large fixtures, history filters, comprehensive event/identity
 modelling, translation coverage, rights review and complete standards certification remain pending.
 
 The undo-storage and explicit retention portions are implemented in the sixth milestone;
@@ -295,8 +296,8 @@ it does not encode the PDF's prose rules, data-dictionary semantics, archive-spe
 full per-value negative cases, or guarantee that conditional sample fixtures were present during
 a particular CI run. Empty/unknown coverage is a request for review, not an unsupported-pass claim.
 
-Verification: 262 tests pass. Tests include all eight version/delivery combinations for authors
-and reference attributes, structured process roundtrips, legacy and FILES restrictions, list
+Verification: 350 tests pass. Regression tests include all eight version/delivery combinations for authors and reference
+attributes, structured process roundtrips, legacy and FILES restrictions, list
 identity preservation, native field editing, focused Save and audited Undo/Redo.
 The deterministic XSD inventory generator compiles every bundled schema set and is tested for
 the 1.0-1.3 declarations, repeated authors, dateiRef attribute release differences and v1.3
@@ -315,10 +316,24 @@ requirements from the v1.3.0 specification, with clause page, MUST/SHOULD level,
 short summary, candidate code surface and test-evidence field. The `in_1_*` columns indicate
 only whether an identifier occurs in each older PDF: they do not prove that the clause text or
 meaning stayed unchanged. The example ID in the specification's notation section is excluded.
-Two rows are partially verified: M_4.5-1 has exhaustive synthetic presence coverage plus real SIP
-save/reopen cases for required delivery/dossier fields across all eight release/profile combinations
-and legacy FILES provenance; M_4.10-1 has a tested dossier-estimation rule. The other 58 remain `not-assessed`;
-candidate code paths and sample smoke tests are not clause-conformance evidence.
+Twenty-two rows are partially verified: M_4.5-1 has exhaustive synthetic presence coverage plus real SIP
+save/reopen cases; M_4.9-2 tests protection-period scope selection and mixed-scope rejection;
+M_4.10-1 has a tested dossier-estimation rule; S_5.2-1/2 have tested count
+threshold/severity behavior; M_4.4-2 has FILES Dossier/Document links in all releases and Mappe links
+in the schema-permitted Dossier context; M_4.4-3 has FILES classification hierarchy checks for all
+releases, including Mappe paths where supported; M_4.11-1 has missing, unsupported, matching and mismatching digest cases
+for all supported algorithms; A_2.6-1/2 have partial PDF, ZIP and Office encryption detection;
+M_4.6-1 has positive and negative metadata validation cases for all four release schemas; M_4.7-1
+has valid, missing and surplus file/folder TOC cases for all four releases;
+S_5.4-2 has SIP-name pattern and preference-toggle cases; S_5.4-3 has valid and invalid top-level header/content layout cases across all four releases;
+S_5.4-4 rejects non-XSD files anywhere under `header/`;
+S_5.4-5 has selected schema-file set checks across all releases and missing-dependency failures;
+M_4.12-1 has valid file assignments round-tripped across all eight release/profile combinations and a dangling-ID negative case;
+M_4.12-2 has release-gated optional attributes and XSD-valid save/reopen coverage;
+S_5.3-2 has allowed/forbidden character coverage; S_5.8-1/2/3 have
+conditional integrated-documentation folder, TOC, file-presence and SIARD dossier-link checks;
+The other 38 remain `not-assessed`; candidate code paths and sample smoke tests are not
+clause-conformance evidence.
 
 The [data-dictionary matrix](ech0160-data-dictionary.csv) contains 969 profile-specific rows
 generated from the official 1.0, 1.1, 1.2.0 and 1.3.0 workbooks. It records mandatory/optional
@@ -337,6 +352,8 @@ marks the dossier estimation note when a period endpoint is approximate.
 Real-package tests additionally remove, validate, save, reopen, restore and revalidate required
 delivery and dossier fields in all eight version/profile combinations, and round-trip the legacy
 FILES `systemName` and `systemBeschreibung` fields for versions 1.0 and 1.1.
+File-level `eigenschaft` name/value pairs are editable and round-trip through real XSD-valid SIPs
+for all eight version/profile combinations.
 The local legacy 1.0 FILES fixture omits `systemName` and `systemBeschreibung`, both marked M
 by that release's data dictionary; validation now reports these omissions instead of silently
 waiving the requirements.
@@ -354,8 +371,8 @@ The [KOST test-package page](https://kost-ceco.ch/cms/ech-0160-archivische-ablie
 lists a 2026-04-21 eCH-0160 v1.3 FILES package. The package was checked against the bundled v1.3
 XSD and passed the application's sample smoke workflow. It remains in the ignored local `samples/`
 directory; it is not redistributed by this repository. Local test runs skip the fixture when it is
-absent. The Windows [CI workflow](../.github/workflows/tests.yml) downloads it transiently from
-the official KOST page, verifies SHA-256
+absent. The [cross-platform CI workflow](../.github/workflows/tests.yml) downloads it transiently
+from the official KOST page on Windows, Ubuntu and macOS, verifies SHA-256
 `dc4474a3cfe654f7e459cd594cd43d91f7e563b98c39e809417e6778ba023c65`, and sets
 `PACKAGE_TURBO_REQUIRE_KOST_FIXTURE=1` so absence is fatal. The ZIP is not committed or attached
 as a workflow artifact. The maintainer confirms this project use is non-commercial; review terms
@@ -366,13 +383,18 @@ dictionary-mandatory metadata across versions. It also checks that every dateiRe
 a content file and treats the v1.3 IDREFS value as a list; tests cover multi-ID references and a
 dangling reference. M_4.10-1 tests require an explanation for estimated dossier periods. Existing
 positive/negative tests cover checksum and table-of-contents/file-system agreement.
+Full validation detects password-protected PDFs, ZIP entries with the encryption flag, and
+password-protected Office files recognized by `msoffcrypto-tool`. This is partial A_2.6 coverage;
+other encryption methods and legacy Office variants are not comprehensively detected.
 
 This remains a first-pass traceability baseline, not full standards conformance. Required next
 coverage includes clause-by-clause review of all four PDFs and data dictionaries, realistic
 mandatory-field package fixtures and remaining conditional constraints, arbitrary repeated/complex
-metadata, element attributes such as reihung,
-file properties/eigenschaft, archival operations, attachments, complete facet/choice UI validation,
-schema trust/resolution hardening, receiver profiles and explicit migration. Whole-document lxml
+metadata, element attributes such as reihung, archival operations, attachments, complete
+facet/choice UI validation, custom/mismatched schema behavior, receiver profiles and explicit
+migration. Validation now checks metadata against the trusted bundled schema selected by the declared
+schemaVersion, even if the SIP's local XSD is missing or permissive; byte-level schema parity and
+archive-specific profile overrides remain open. Whole-document lxml
 XMLSchema validation remains authoritative; the current controls do not claim every invalid value
 is rejected before staging. Full eCH compliance and legal clearance remain release gates, as are
 complete language catalogues and native artifact qualification.
@@ -399,13 +421,20 @@ complete language catalogues and native artifact qualification.
   data dictionaries and schemas for 1.0-1.3, including relevant legacy FILES-DOC forms.
 - Complete clause-level assessment and mandatory-field test mapping using the first-pass
   matrices documented above; compare requirement text, not just identifier presence.
-- Complete attributes, repeated/complex values, dateiRef attributes, file properties,
+- Complete attributes, repeated/complex values, dateiRef attributes, file properties' full
+  normative semantics,
   archival operations, attachments and editable Vorgang/Aktivitaet where the schema permits.
 - Model choices, cardinality, attributes and facets faithfully. Use lxml.XMLSchema for
   validation; do not hand-write an XSD validation engine.
 - Preserve unknown nodes/attributes, identifiers and original checksum algorithms.
-- Keep secure XML parsing and local schema resolution; reject escaping/network imports.
-- Detect missing/mismatched/custom schemas explicitly; never silently migrate on Save.
+- XML and XSD parsing disables DTD loading/network access; validation requires
+  `header/xsd/arelda.xsd` and confines its include/import dependencies to regular local files
+  inside that directory. Negative tests cover missing entrypoints, remote and escaping references.
+  The trusted bundled schema is also applied for the declared release, so a custom SIP schema
+  cannot widen accepted metadata. Byte-different but semantically equivalent schemas are not
+  classified as custom; exact parity checks and archive-specific profile overrides remain open.
+- Report missing/unloadable local schemas and metadata accepted only by a permissive local schema;
+  never silently migrate on Save.
 - Separate eCH rules from receiving-archive policies, including size/path/format limits.
 - Migrate only an explicit copy, preview changes/losses, validate the result and audit its
   derivation. Reject unrepresentable downgrades rather than silently dropping information.
@@ -435,7 +464,8 @@ complete language catalogues and native artifact qualification.
 
 - Context-focused editing and clear standard/profile/dirty/recovery status; preserve useful
   navigation, search, notes, sampling, reports and multiselection workflows.
-- Audit timeline filters, per-object before/after details and deleted-object context.
+- History details now show field/path before-and-after values and deleted metadata/file/folder
+  context, with the original event record available as raw JSON.
 - Package-level undo/redo, preview for batch edits/imports/conflicts/deletion/normalisation,
   and precise Save/Discard behaviour for staged work.
 - Field-level schema errors with direct navigation and rule/profile explanations. Distinguish
@@ -462,30 +492,67 @@ complete language catalogues and native artifact qualification.
 
 ## Audit Profile And Privacy
 
-`ph_backend.audit.AuditJournal` currently records package-level representation events.
-Per-XML-entity and per-file PREMIS object modelling remains pending. Application metadata
-commits now use `ph_backend.workspace.MetadataWorkspace`; the standalone journal API
-does not itself observe changes. A successful preparation event means its durable intent
-was written, not that XML replacement or the overall commit has succeeded.
+`ph_backend.audit.AuditJournal` stores package-level preservation events. PREMIS export now also
+emits file objects with fixity/size from initial manifests and file changes, plus intellectual-
+entity objects for metadata events carrying an object ID or XML path. When XML changes include an
+entity's `id`, the export derives a stable package-scoped hashed PREMIS identifier and links a
+deleted entity as a source object. Modeled objects have a structural `is part of` relationship to
+the package representation; file formats are marked unknown rather than inferred. Exports made
+from a SIP snapshot also model current nesting between supported id-bearing metadata entities and
+`dateiRef` links from those entities to manifest-backed file objects. This graph describes the
+snapshot, not each historical event state; other domain relationships and entities without stable
+IDs are not inferred. Journal-only PREMIS exports without a SIP snapshot cannot provide this graph.
+Events without object details still link only to the package. Application metadata commits use
+`ph_backend.workspace.MetadataWorkspace`; the standalone journal API does not observe changes.
+A successful preparation event means its durable intent was written, not that XML replacement or
+the overall commit has succeeded.
+
+New package creation now requires a confirmed operator and records a `package creation` event
+with the initial SIP file manifest before the package is made active. Manual PREMIS/METS export
+is wired through History with full/redacted choice and a consistent saved SIP snapshot. Explicit
+validation runs now record mode, result, check counts and the validated metadata hash without
+embedding field values; a read-only validation appends only to the external companion. Automatic
+continuous checks are not separately logged. Successful export appends a completion event after
+writing the output; the event records the exact journal sequence/digest included in that export.
+Consequently, a PREMIS snapshot does not contain its own completion event; the next export does.
+Historical, per-event entity relationship modeling remains incomplete as described below.
+When a pre-existing SIP first enters writable audited editing, a `package registration` event
+records its current metadata hash and file manifest with an explicit note that earlier history is
+unknown; it does not invent a creation event or claim provenance before registration.
+
+History now provides search and event-type/outcome filters plus explicit full/redacted PREMIS
+XML export and a SIP ZIP + PREMIS + METS bundle export for METS 2 or 1.12.1. The bundle is
+built from a saved, copied SIP snapshot;
+its METS file references the resulting ZIP filename and computed SHA-256, while the PREMIS
+sidecar fixity is computed from the exact exported XML. Existing destinations are not overwritten.
+This is a local export flow, not a receiving-archive certified transfer workflow.
 
 Canonical payloads use RFC 8785. Each SHA-256 digest covers the previous digest bytes
 followed by the canonical payload. The stored head checks truncation; an independently
 retained `AuditCheckpoint` detects rollback beyond that trusted checkpoint. A privileged
 attacker can rewrite both history and head: this is not a signature or authorship proof.
 
-Keep complete old/new metadata values locally, hashes rather than file contents in events,
-and restrict access to the companion. The operator ID remains visible in redacted exports;
-redaction currently omits event detail rather than anonymising operators. Export labels
-must make this distinction clear. Never rewrite the authoritative journal to redact it.
+Keep complete old/new metadata values locally and hashes rather than file contents in events;
+restrict access to the companion. Redacted PREMIS omits event details but retains operator IDs,
+package/object identifiers and file fixity hashes; it is not an anonymised export. Never rewrite
+the authoritative journal to redact it.
 
 Read-only journal access never creates or appends records. Backup/blob retention and storage
 limits belong in the workspace layer; deleting rollback blobs must not delete event history.
 Digital signatures, trusted external timestamps, cloud services and telemetry are deferred.
 
-The METS serializers describe a strict SIP ZIP plus a relative PREMIS XML reference under
-the local profile `urn:package-turbo:mets-companion:1`. The caller must supply the actual SIP
-SHA-256 and write the corresponding PREMIS snapshot; these APIs do not assemble a delivery
-bundle or provide a receiving-archive certification.
+Explicit validation runs append a `validation` event containing only mode, outcome, issue counts,
+profile/version and metadata SHA-256. Read-only SIP validation may append to the separate
+companion journal, but it does not change SIP bytes. Automatic continuous checks are not logged.
+Export completion events reference the sequence and digest used to produce the sidecar, avoiding
+a recursive self-hash; the completion event appears in subsequent exports, not the current snapshot.
+
+The low-level METS serializers use the local profile `urn:package-turbo:mets-companion:1` and
+require a SIP filename and SHA-256 from the caller. The History export flow supplies these from
+the copied package snapshot and writes the referenced sidecars; it does not provide receiving-
+archive certification. Explicit validation and export-completion events are journaled; automatic
+continuous checks are not, and an export event appears in the next export rather than its own
+PREMIS snapshot.
 
 ## Sources And Distribution Review
 

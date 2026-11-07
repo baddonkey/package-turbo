@@ -9,7 +9,8 @@ from pathlib import Path, PurePosixPath
 from .sip import SipPackage, file_checksum, localname
 from .processing import copy_file
 
-ALLOWED_NAME = re.compile(r"^[A-Za-z0-9_.\-]+$")
+ALLOWED_NAME = re.compile(r"^[A-Za-z0-9!#$%()+,\-.=@\[\]{}~_ ]+$")
+_ALLOWED_NAME_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%()+,-.=@[]{}~_ ")
 DEFAULT_ALGORITHM = "MD5"
 _UMLAUTS = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "Ä": "Ae", "Ö": "Oe", "Ü": "Ue", "ß": "ss"})
 
@@ -19,13 +20,13 @@ class FileOperationError(Exception):
 
 
 def is_valid_name(name: str) -> bool:
-    return bool(ALLOWED_NAME.match(name)) and name not in (".", "..")
+    return bool(name) and bool(ALLOWED_NAME.fullmatch(name)) and name not in (".", "..")
 
 
 def sanitize_name(name: str) -> str:
     text = unicodedata.normalize("NFKD", name.translate(_UMLAUTS))
     text = "".join(ch for ch in text if not unicodedata.combining(ch))
-    text = re.sub(r"[^A-Za-z0-9_.\-]", "_", text)
+    text = "".join(character if character in _ALLOWED_NAME_CHARS else "_" for character in text)
     text = re.sub(r"_+", "_", text).strip("_")
     return text or "_"
 

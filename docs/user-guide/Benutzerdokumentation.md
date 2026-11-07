@@ -524,6 +524,10 @@ Rechtsklick auf das Ordnungssystem → *Ordnungssystem neu nummerieren...* und d
 | Ausschneiden, Kopieren, Einfügen, Löschen | Text markieren, Rechtsklick → *Ausschneiden*, *Kopieren*, *Einfügen* oder *Löschen*; oder Menü *Bearbeiten*. |
 | Wertelisten bearbeiten | Felder mit festgelegten Werten (z. B. Erscheinungsform, Datenschutz, Prüfalgorithmus) werden über eine Auswahlliste bearbeitet. Die Werte stammen aus dem XSD des Pakets. |
 
+Bei einer Datei können unter *Dateieigenschaften* wiederholte technische Name-Wert-Paare
+(`<eigenschaft name="...">Wert</eigenschaft>`) hinzugefügt, geändert oder entfernt werden.
+Die zulässige Position und Wiederholung richten sich nach dem XSD des geöffneten Pakets.
+
 ![Feld mit Validierungsfehler (Dossiertitel zu kurz)](img/15-feldfehler.png)
 
 *Rückgängig* wirkt bei noch nicht übernommenen Eingaben im aktiven Textfeld. Für übernommene
@@ -591,22 +595,46 @@ Strukturelle Änderungen (Objekte erstellen, verschieben, löschen, zuweisen) er
 
 ### 9.6 Dauerhafte Metadaten-Historie
 
-Vor der ersten Bearbeitung wird die Identität unter *Bearbeitet durch* bestätigt.
-Nach der Bestätigung führen Sie die gewünschte Bearbeitung erneut aus. Die Identität
-kann auch unter *Extras → Benutzervorgaben → Metadaten-Historie* festgelegt werden.
+Vor dem Erstellen eines Pakets oder der ersten Bearbeitung wird die Identität unter
+*Erstellt durch* bzw. *Bearbeitet durch* bestätigt. Nach der Bestätigung führen Sie die
+gewünschte Aktion erneut aus. Die Identität kann auch unter
+*Extras → Benutzervorgaben → Metadaten-Historie* festgelegt werden.
 Sie wird bei den zugehörigen Änderungen gespeichert; verwenden Sie keine vertraulichen
 Zugangsdaten in diesem Feld.
+Beim Erstellen eines Pakets wird ein erstes Ereignis mit Version, Ablieferungstyp und
+Prüfsummenmanifest des erzeugten SIP gespeichert. Ohne bestätigte Identität wird kein neues
+Paket angelegt.
 
 Die Aktionsview *Metadaten-Historie* zeigt dauerhaft gespeicherte Ereignisse mit UTC-Zeit,
 Bearbeiter, Ergebnis und alten/neuen Metadatenwerten. Doppelklick öffnet die Ereignis-
 und Transaktionsdetails. Die Historie bleibt nach *Speichern* und erneutem Öffnen erhalten.
 *Verwerfen* dokumentiert verworfene Änderungen, ohne sie in die XML-Datei zu übernehmen.
+Die Suchzeile sowie die Filter *Ereignis* und *Ergebnis* grenzen die sichtbaren Zeilen ein;
+Kopieren exportiert die gefilterte Ansicht, die vollständige Historie bleibt unverändert.
+Eine ausdrücklich gestartete Validierung wird mit Modus, Ergebnis, Fehler-/Warnungsanzahl und
+Metadaten-Prüfsumme protokolliert; Feldwerte werden dabei nicht dupliziert. Automatische
+Zwischenprüfungen während der Bearbeitung erzeugen keine eigenen Ereignisse.
+
+In der Toolbar der Metadaten-Historie öffnet *PREMIS/METS exportieren...* den Exportdialog.
+Wählen Sie *Vollständig*, um Ereignisdetails einzuschliessen, oder *Redigiert*, um diese
+Details auszulassen. Bedienerkennung, Paket-/Objektkennungen und Prüfsummen bleiben auch im
+redigierten PREMIS sichtbar; Dateinamen und alte/neue Werte aus Ereignisdetails werden ausgelassen.
+*Nur PREMIS XML...* speichert ein einzelnes PREMIS-Dokument. *SIP + METS/PREMIS...* erstellt
+im gewählten Ordner einen neuen Unterordner `<SIP-Name>.package-turbo-export` mit dem SIP-ZIP,
+der PREMIS-Datei und dem METS-Dokument. METS 2 und METS 1.12.1 stehen zur Auswahl. METS
+referenziert den tatsächlichen ZIP-Dateinamen und dessen SHA-256-Prüfsumme. Bestehende
+Exportordner werden nicht überschrieben; das geöffnete SIP bleibt unverändert.
+Der erfolgreiche Export wird anschliessend im Journal protokolliert. Das exportierte PREMIS
+enthält den angegebenen Journalstand vor diesem Abschlussereignis; ein späterer Export enthält
+auch das Abschlussereignis des vorherigen Exports.
 
 Der neben dem Paket liegende Ordner `<SIP-Name>.package-turbo` enthält das Journal und
 den Wiederherstellungszustand. Er gehört nicht in `header` oder `content`. Die Historie
 enthält auch frühere, möglicherweise vertrauliche Werte: schützen Sie diesen Ordner
 und bewahren Sie ihn beim Weitergeben einer Arbeitskopie separat auf. Automatisches
 Zuordnen nach einem Umbenennen oder Kopieren des Pakets ist noch nicht umgesetzt.
+Bei einem bereits vorhandenen SIP wird beim ersten schreibenden Zugriff der aktuelle Stand
+mit Prüfsummen registriert; eine davor liegende Bearbeitungsgeschichte wird nicht erfunden.
 
 Bei einem unterbrochenen Speichervorgang wählen Sie *Wiederherstellen* in der Metadaten-
 Historie. Die Wiederherstellung prüft die tatsächliche XML-Datei gegen die dokumentierten
@@ -635,8 +663,8 @@ Texte im aktiven Eingabefeld gehören nicht zu dieser Wiederherstellung.
 > **Wichtig:** Automatische Aufbewahrungsbereinigung folgt noch; die manuelle Vorschau ist
 > nachfolgend beschrieben. Der Undo-Verlauf ist
 > sitzungsgebunden; nach einem Absturz können unbenutzte
-> Schnappschussordner verbleiben. Die Erfassung aller Prüf-/Exportvorgänge und die
-> vollständige PREMIS-Objektmodellierung sind noch nicht abgeschlossen.
+> Schnappschussordner verbleiben. Automatische Zwischenprüfungen und der Exportvorgang selbst
+> werden nicht protokolliert; die vollständige PREMIS-Objektmodellierung ist noch nicht abgeschlossen.
 
 ### 9.7 Fortschritt und Abbrechen
 
@@ -743,6 +771,8 @@ Package Turbo prüft die Dateien in `content` anhand des **Katalogs archivischer
 
 > **Wichtig:** Die Formaterkennung verwendet derzeit nur die Dateiendung. Varianten mit gleicher Endung (z. B. PDF/A-3 oder GeoTIFF) lassen sich damit nicht unterscheiden. Die Bewertung ist kein Nachweis der Formatkonformität, etwa von PDF/A. Package Turbo konvertiert keine Dateien.
 
+Die vollständige Validierung erkennt passwortgeschützte PDFs, verschlüsselte Einträge in ZIP-Dateien und passwortgeschützte Office-Dateien in unterstützten Formaten. Andere Verschlüsselungsverfahren werden nicht umfassend erkannt; ein fehlender Hinweis ist daher kein allgemeiner Nachweis für unverschlüsselte Dateien.
+
 #### 10.4.2 Paketgrösse
 
 Prüfung, ob das Paket die maximale Grösse von 8 GB übersteigt. Eine Aufteilung auf mehrere Pakete wird nicht angeboten.
@@ -780,6 +810,7 @@ Prüfung, ob sich im Toplevel-Ordner ausschliesslich die Ordner `header` und `co
 #### 10.4.8 Inhalt Ordner header
 
 Prüfung, ob der Ordner `header` ausschliesslich `metadata.xml` und den Ordner `xsd` mit den XSD-Dateien enthält.
+Auch innerhalb von `header/xsd` sind nur XSD-Dateien zulässig; Primärdaten werden dort als unzulässiger Inhalt gemeldet.
 
 | Fehlerbehebung | Vorgehen |
 |---|---|
@@ -792,11 +823,12 @@ Prüfung, ob im Paket Ordner ohne Dateien vorhanden sind (Warnung). Doppelklick 
 
 #### 10.4.10 Zeichensatz
 
-Prüfung, ob Datei- und Ordnernamen nur die Zeichen `A–Z a–z 0–9 _ . -` enthalten.
+Prüfung des eCH-0160-Zeichensatzes für Datei- und Ordnernamen: ASCII-Buchstaben und Ziffern
+sowie `! # $ % ( ) + , - . = @ [ ] { } ~ _` und Leerzeichen.
 
 | Fehlerbehebung | Vorgehen |
 |---|---|
-| Unerlaubte Zeichen ersetzen | Rechtsklick auf die Meldung oder *Extras → Normalisierung → Datei- und Ordnernamen normalisieren...*. Umlaute werden umschrieben (ä → ae), Leerzeichen und andere Zeichen durch `_` ersetzt. |
+| Unerlaubte Zeichen ersetzen | Rechtsklick auf die Meldung oder *Extras → Normalisierung → Datei- und Ordnernamen normalisieren...*. Umlaute werden umschrieben (ä → ae); Zeichen ausserhalb des erlaubten Zeichensatzes werden durch `_` ersetzt. Leerzeichen bleiben erhalten. |
 | Rückgängig machen | *Extras → Normalisierung → Datei- und Ordnernamen denormalisieren...*. |
 
 Die Normalisierung verändert die Arbeitskopie. Beim nächsten *Speichern* werden auch zuvor vorgenommene Metadatenänderungen übernommen.
@@ -838,7 +870,7 @@ Beim Löschen von Dateien in den Metadaten werden auch ihre Zuweisungen entfernt
 | 10.7.4 Identische Dateien | Dateien mit gleicher Prüfsumme (Warnung). | Doppelklick, Datei im Paket-Navigator löschen. |
 | 10.7.5 Keine Zuweisung | Dateien in `content`, die weder einem Dossier noch einem Dokument zugewiesen sind. | Datei zuweisen (8.3.6). |
 | 10.7.6 Leere Dossiers | Dossiers und Subdossiers ohne Dateien (Warnung). | Dossier löschen oder Datei zuweisen. |
-| 10.7.7 Schutzfrist | Schutzfristenkategorie und Schutzfrist müssen auf Stufe Ablieferung bzw. Dossier beide vorhanden und im Paket einheitlich sein. | Im Editor ergänzen; die Verteilung zeigt das Register *Statistik*. |
+| 10.7.7 Schutzfrist | Schutzfristenkategorie und Schutzfrist müssen paarweise vorhanden sein. Im Paket sind Schutzfristen einheitlich auf einer Ebene (Ablieferung, Ordnungssystemposition oder Dossier) zu erfassen. | Im Editor ergänzen; die Verteilung zeigt das Register *Statistik*. |
 | 10.7.8 Zeitraum | Zeiträume von Dossiers und Dokumenten müssen innerhalb des übergeordneten Zeitraums liegen (Warnung). | Im Editor korrigieren oder Kontextmenü *Nach oben übernehmen*; *Extras → Zeiträume auf Ablieferung kumulieren*. |
 | 10.7.9 Offener Zeitraum | Dossiers mit *keine Angabe* als *bis*-Datum (Warnung). | Im Editor eine konkrete Angabe erfassen. |
 | 10.7.10 Allgemein | Validierung des metadata.xml gegen das XSD im Ordner `header/xsd`. Die technische Meldung beginnt mit «Das Paket entspricht nicht den Anforderungen …» und nennt die Zeile. | Fehler im metadata.xml analysieren. |

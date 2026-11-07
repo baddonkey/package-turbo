@@ -1,6 +1,7 @@
 """Feature controllers exposed to QML next to the core Backend."""
 
 import json
+import shutil
 from pathlib import Path
 
 from PySide6.QtCore import Property, QObject, QUrl, Signal, Slot
@@ -10,6 +11,7 @@ from . import files, fixes, notes, package_factory, reports, sampling, schema, s
 from .backend import SIMPLE_SEARCH_COLUMNS, Backend
 from .sip import UnsupportedChecksumError, localname
 from .audit import AuditError
+from .workspace import companion_directory
 
 _ERRORS = (structure.StructureError, files.FileOperationError, notes.NoteError, timespan.DateFormatError,
            package_factory.PackageCreationError, UnsupportedChecksumError, OSError)
@@ -441,16 +443,25 @@ class PackageController(_Controller):
     @Slot(QUrl, str, str, str, str, str, QUrl, str, result=bool)
     def createPackage(self, folder: QUrl, name: str, office: str, delivery_type: str, creator: str,
                       system_name: str, csv_url: QUrl, version: str = xsd_info.LATEST_RELEASE) -> bool:
-        if self.backend.busy:
+        if self.backend.busy or self.backend.dirty:
+            return False
+        if not self.backend.auditOperator.strip():
+            self.backend.auditOperatorRequired.emit()
             return False
         csv_path = csv_url.toLocalFile() if csv_url.isValid() and csv_url.isLocalFile() else None
         try:
+            package_factory.check_name(name.strip(), self.backend.validateSipName)
+            target = Path(folder.toLocalFile()) / name.strip()
+            if companion_directory(target).exists():
+                raise package_factory.PackageCreationError("Zum Paketnamen existiert bereits ein Preservation-Companion.")
             pkg = package_factory.create_package(folder.toLocalFile(), name.strip(), office, delivery_type, creator,
                                                  system_name, csv_path, self.backend.validateSipName, version)
         except _ERRORS as exc:
             self.backend.message.emit("Neues Paket erstellen", str(exc))
             return False
-        if not self.backend.set_package(pkg):
+        if not self.backend.recordCreatedPackage(pkg):
+            shutil.rmtree(pkg.root_dir, ignore_errors=True)
+            shutil.rmtree(companion_directory(pkg.root_dir), ignore_errors=True)
             return False
         self.backend.set_status(f"Paket {pkg.name} erstellt")
         return True

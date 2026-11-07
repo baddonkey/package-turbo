@@ -56,6 +56,58 @@ def test_creation_controller_selects_version(backend, tmp_path, version, expecte
     assert backend.package.root.get("schemaVersion") == expected
 
 
+def test_package_creation_records_initial_audit_event(backend, tmp_path):
+    from pathlib import Path
+
+    controller = PackageController(backend, [])
+
+    assert controller.createPackage(QUrl.fromLocalFile(str(tmp_path)), "SIP_20261106_Amt_Audited",
+                                    "Amt", "GEVER", "", "Plan", QUrl(), "1.3")
+
+    events = backend.historyTable.records()
+    assert len(events) == 1
+    assert events[0]["eventType"] == "package creation"
+    detail = events[0]["detail"]
+    assert {key: detail[key] for key in ("packageName", "schemaVersion", "deliveryType")} == {
+        "packageName": "SIP_20261106_Amt_Audited",
+        "schemaVersion": "5.1",
+        "deliveryType": "GEVER",
+    }
+    assert detail["manifest"]["header/metadata.xml"]["sha256"]
+    assert detail["manifest"]["content"]["type"] == "directory"
+    assert (Path(backend.auditCompanion) / "journal.sqlite3").is_file()
+
+
+def test_package_creation_requires_operator_before_writing_sip(backend, tmp_path):
+    controller = PackageController(backend, [])
+    backend.auditOperator = ""
+    required = []
+    backend.auditOperatorRequired.connect(lambda: required.append(True))
+
+    assert not controller.createPackage(QUrl.fromLocalFile(str(tmp_path)), "SIP_20261106_Amt_NoOperator",
+                                         "Amt", "GEVER", "", "Plan", QUrl(), "1.3")
+
+    assert required
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_existing_package_registers_current_baseline_without_claiming_creation(opened):
+    from pathlib import Path
+    from ph_backend.audit import AuditJournal
+
+    pkg = opened.package
+    assert not Path(opened.auditCompanion).exists()
+    opened.editor.setField(pkg.key(next(pkg.iter_kind("dossier"))), "titel", "First audited change")
+    assert opened.save()
+
+    records = AuditJournal(Path(opened.auditCompanion) / "journal.sqlite3", read_only=True).records()
+    assert records[0]["payload"]["eventType"] == "package registration"
+    detail = records[0]["payload"]["detail"]
+    assert detail["note"] == "Current package state registered; earlier history is unknown."
+    assert detail["manifest"]["header/metadata.xml"]["sha256"]
+    assert records[-1]["payload"]["eventType"] == "package commit"
+
+
 def test_native_creation_dialog_renders_version_choices(backend, app, tmp_path, sip_dir, monkeypatch):
     import os
     import sys
@@ -123,6 +175,7 @@ def test_native_creation_dialog_renders_version_choices(backend, app, tmp_path, 
     app.processEvents()
     assert window.findChild(QObject, "historyView") is not None
     assert [row["eventType"] for row in backend.historyTable.records()] == [
+        "package registration",
         "package draft staging", "package draft staging", "package draft staging",
         "package commit preparation", "package operation", "metadata modification", "package commit"]
     assert "Audited native edit" in backend.historyDetails(5)
@@ -349,6 +402,246 @@ def test_metadata_history_survives_save_close_reopen(opened, sip_dir):
     backend.closePackage()
     backend.openPackage(QUrl.fromLocalFile(str(sip_dir)), False)
     assert backend.historyTable.total == count
+
+
+def test_history_filters_preserve_records_and_reapply_after_refresh(opened):
+    pkg = opened.package
+    opened.editor.setField(pkg.key(next(pkg.iter_kind("dossier"))), "titel", "HistoryFilterToken")
+    assert opened.save()
+    all_records = opened.historyTable.records()
+
+    opened.setHistoryEventFilter("metadata modification")
+    opened.setHistoryOutcomeFilter("success")
+    opened.setHistorySearch("historyfiltertoken")
+    visible = opened.historyTable.visible_records()
+    assert len(visible) == 1
+    assert visible[0]["newValue"] == "HistoryFilterToken"
+    assert opened.historyTable.records() == all_records
+
+    opened._refresh_history()
+    assert len(opened.historyTable.visible_records()) == 1
+    opened.setHistorySearch("no matching event")
+    assert opened.historyTable.visibleCount() == 0
+    assert opened.historyTable.records() == all_records
+    opened.setHistorySearch("")
+    opened.setHistoryEventFilter("")
+    opened.setHistoryOutcomeFilter("")
+
+
+def test_history_details_summarize_deleted_metadata_and_files(opened):
+    import json
+    from pathlib import Path
+    from ph_backend.audit import AuditJournal
+
+    journal = AuditJournal(Path(opened.auditCompanion) / "journal.sqlite3")
+    event = journal.append("package operation", agent_identifier="operator:test", software_version="0.1.0",
+                           detail={"changes": [
+                               {"path": "/paket/ablieferung/dossier[2]/@id",
+                                "oldValue": "_dossier-2", "newValue": None},
+                               {"path": "/paket/ablieferung/dossier[2]/titel/text()",
+                                "oldValue": "Deleted dossier", "newValue": None},
+                           ], "fileChanges": [
+                               {"path": "content/deleted.pdf",
+                                "before": {"type": "file", "size": 12, "sha256": "a" * 64},
+                                "after": None},
+                           ]})
+    opened._refresh_history()
+    row = next(index for index, record in enumerate(opened.historyTable.records())
+               if record["eventIdentifier"] == event["payload"]["eventIdentifier"])
+
+    details = json.loads(opened.historyDetails(row))
+    assert details["deletedObjects"] == [
+        {"kind": "dossier", "identifier": "_dossier-2", "label": "Deleted dossier",
+         "path": "/paket/ablieferung/dossier[2]"},
+        {"kind": "file", "label": "deleted.pdf", "path": "content/deleted.pdf"},
+    ]
+    assert {change["path"]: (change["before"], change["after"])
+            for change in details["changeSummary"]} == {
+                "/paket/ablieferung/dossier[2]/@id": ("_dossier-2", None),
+                "/paket/ablieferung/dossier[2]/titel/text()": ("Deleted dossier", None),
+                "content/deleted.pdf": ({"type": "file", "size": 12, "sha256": "a" * 64}, None),
+            }
+
+
+def test_native_history_export_offers_privacy_and_mets_choices(backend, app, sip_dir):
+    from PySide6.QtCore import QMetaObject, QObject, QUrl
+    from PySide6.QtQuick import QQuickWindow, QSGRendererInterface
+    from PySide6.QtQuickControls2 import QQuickStyle
+    from PySide6.QtTest import QTest
+    from main import create_engine
+
+    pkg = backend.openPackage(QUrl.fromLocalFile(str(sip_dir)), False)
+    pkg = backend.package
+    assert not backend.dirty
+    backend.editor.setField(pkg.key(next(pkg.iter_kind("dossier"))), "titel", "Export UI event")
+    assert backend.save()
+    QQuickStyle.setStyle("Fusion")
+    QQuickWindow.setGraphicsApi(QSGRendererInterface.GraphicsApi.Software)
+    engine = create_engine(backend)
+    window = engine.rootObjects()[0]
+    window.setWidth(1280)
+    window.setHeight(800)
+    window.show()
+    assert QTest.qWaitForWindowExposed(window, 2000)
+
+    tabs = window.findChild(QObject, "actionTabs")
+    tabs.setProperty("currentIndex", 5)
+    app.processEvents()
+    export_button = window.findChild(QObject, "preservationExportButton")
+    assert export_button is not None and export_button.property("enabled")
+    assert QMetaObject.invokeMethod(export_button, "clicked")
+    app.processEvents()
+
+    dialog = window.findChild(QObject, "auditExportDialog")
+    assert dialog is not None and dialog.property("visible")
+    full_choice = window.findChild(QObject, "fullPremisChoice")
+    redacted_choice = window.findChild(QObject, "redactedPremisChoice")
+    mets_version = window.findChild(QObject, "metsVersionChoice")
+    assert full_choice.property("checked")
+    assert not redacted_choice.property("checked")
+    assert mets_version.property("count") == 2
+    assert mets_version.property("currentIndex") == 0
+    redacted_choice.setProperty("checked", True)
+    mets_version.setProperty("currentIndex", 1)
+    assert redacted_choice.property("checked")
+    assert mets_version.property("currentText") == "METS 1.12.1"
+
+    premis_button = window.findChild(QObject, "exportPremisOnlyButton")
+    assert QMetaObject.invokeMethod(premis_button, "clicked")
+    app.processEvents()
+    premis_file_dialog = window.findChild(QObject, "auditPremisFileDialog")
+    assert window.property("auditExportRedacted")
+    assert premis_file_dialog.property("visible")
+    premis_file_dialog.close()
+    app.processEvents()
+
+    assert QMetaObject.invokeMethod(export_button, "clicked")
+    app.processEvents()
+    dialog = window.findChild(QObject, "auditExportDialog")
+    mets_version = window.findChild(QObject, "metsVersionChoice")
+    mets_version.setProperty("currentIndex", 1)
+    bundle_button = window.findChild(QObject, "exportSipMetsButton")
+    assert QMetaObject.invokeMethod(bundle_button, "clicked")
+    app.processEvents()
+    bundle_folder_dialog = window.findChild(QObject, "auditBundleFolderDialog")
+    assert window.property("auditExportMetsVersion") == "1.12.1"
+    assert bundle_folder_dialog.property("visible")
+    bundle_folder_dialog.close()
+    app.processEvents()
+    QMetaObject.invokeMethod(dialog, "close")
+    window.close()
+    engine.deleteLater()
+
+
+@pytest.mark.parametrize("redact_values", [False, True])
+def test_premis_export_ui_backend_respects_privacy_choice(opened, tmp_path, redact_values):
+    import xml.etree.ElementTree as ET
+    from pathlib import Path
+
+    pkg = opened.package
+    opened.editor.setField(pkg.key(next(pkg.iter_kind("dossier"))), "titel", "Private export detail")
+    assert opened.save()
+    journal_path = Path(opened.auditCompanion) / "journal.sqlite3"
+    from ph_backend.audit import AuditJournal
+
+    journal_before = AuditJournal(journal_path, read_only=True).records()
+    destination = tmp_path / ("redacted.xml" if redact_values else "full.xml")
+
+    opened.exportPremis(QUrl.fromLocalFile(str(destination)), redact_values)
+
+    xml = destination.read_bytes()
+    premis_root = ET.fromstring(xml)
+    assert (b"Private export detail" in xml) is not redact_values
+    assert len(premis_root.findall("{http://www.loc.gov/premis/v3}event")) == len(journal_before)
+    journal_after = AuditJournal(journal_path, read_only=True).records()
+    assert journal_after[-1]["payload"]["eventType"] == "preservation export"
+    assert journal_after[-1]["payload"]["detail"]["sourceSequence"] == len(journal_before)
+    assert journal_after[-1]["payload"]["detail"]["redacted"] is redact_values
+
+
+def test_premis_export_refuses_dirty_or_in_package_destination(opened, tmp_path):
+    pkg = opened.package
+    destination = tmp_path / "premis.xml"
+    opened.editor.setField(pkg.key(next(pkg.iter_kind("dossier"))), "titel", "Unsaved change")
+    opened.exportPremis(QUrl.fromLocalFile(str(destination)), False)
+    assert not destination.exists()
+    assert any("speichern" in text.lower() for _, text in opened.messages)
+
+    assert opened.save()
+    inside_sip = pkg.root_dir / "premis.xml"
+    opened.exportPremis(QUrl.fromLocalFile(str(inside_sip)), False)
+    assert not inside_sip.exists()
+    assert any("SIP" in text for _, text in opened.messages)
+
+
+@pytest.mark.parametrize(("redact_values", "mets_version"), [(False, "2"), (True, "1.12.1")])
+def test_audit_bundle_export_hashes_actual_zip_and_references_sidecars(
+        opened, tmp_path, redact_values, mets_version):
+    import hashlib
+    import xml.etree.ElementTree as ET
+    import zipfile
+    from pathlib import Path
+    from ph_backend.audit import AuditJournal
+
+    pkg = opened.package
+    opened.editor.setField(pkg.key(next(pkg.iter_kind("dossier"))), "titel", "Private bundle detail")
+    assert opened.save()
+    destination = tmp_path / "exports"
+    destination.mkdir()
+
+    opened.exportAuditBundle(QUrl.fromLocalFile(str(destination)), redact_values, mets_version)
+
+    bundle = destination / f"{pkg.name}.package-turbo-export"
+    archive = bundle / f"{pkg.name}.zip"
+    premis = bundle / f"{pkg.name}.premis.xml"
+    mets = ET.parse(bundle / f"{pkg.name}.mets.xml").getroot()
+    premis_root = ET.parse(premis).getroot()
+    archive_digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+    assert archive.is_file() and premis.is_file()
+    with zipfile.ZipFile(archive) as sip:
+        assert f"{pkg.name}/header/metadata.xml" in sip.namelist()
+    sip_file = next(element for element in mets.iter() if element.tag.endswith("}file") and element.get("ID") == "sip")
+    md_reference = next(element for element in mets.iter() if element.tag.endswith("}mdRef"))
+    location = next(element for element in mets.iter() if element.tag.endswith("}FLocat"))
+    assert sip_file.get("CHECKSUM") == archive_digest
+    assert md_reference.get("CHECKSUM") == hashlib.sha256(premis.read_bytes()).hexdigest()
+    assert location.get("LOCREF") == archive.name or location.get("{http://www.w3.org/1999/xlink}href") == archive.name
+    assert "has part" in [element.text for element in premis_root.iter()
+                           if element.tag.endswith("}relationshipSubType")]
+    assert (b"Private bundle detail" in premis.read_bytes()) is not redact_values
+    journal = AuditJournal(Path(opened.auditCompanion) / "journal.sqlite3", read_only=True)
+    events = journal.records()
+    export_event = events[-1]["payload"]
+    assert export_event["eventType"] == "preservation export"
+    assert export_event["detail"]["sourceSequence"] == len(events) - 1
+    assert export_event["detail"]["sipSha256"] == archive_digest
+    assert export_event["detail"]["metsVersion"] == mets_version
+    assert export_event["detail"]["redacted"] is redact_values
+    assert len(premis_root.findall("{http://www.loc.gov/premis/v3}event")) == len(events) - 1
+
+
+def test_premis_export_links_deleted_sip_entity_by_stable_id(opened):
+    import hashlib
+    from pathlib import Path
+    from lxml import etree
+    from ph_backend.audit import AuditJournal, PREMIS_NS
+
+    pkg = opened.package
+    dossier = list(pkg.iter_kind("dossier"))[-1]
+    identifier = dossier.get("id")
+    opened.stage_file_operation(lambda package: package.remove(dossier))
+    assert opened.save()
+
+    journal = AuditJournal(Path(opened.auditCompanion) / "journal.sqlite3", read_only=True)
+    root = etree.fromstring(journal.premis_xml())
+    expected = "urn:package-turbo:xml:" + hashlib.sha256(
+        (journal.package_identifier + "\0xml\0id:" + identifier).encode("utf-8")).hexdigest()
+    namespaces = {"p": PREMIS_NS}
+    object_ids = root.xpath("p:object/p:objectIdentifier/p:objectIdentifierValue/text()", namespaces=namespaces)
+    source_links = root.xpath("p:event/p:linkingObjectIdentifier[p:linkingObjectRole='source']"
+                              "/p:linkingObjectIdentifierValue/text()", namespaces=namespaces)
+    assert expected in object_ids and expected in source_links
+    assert b"/dossier[" not in journal.premis_xml(redact_values=True)
 
 
 def test_missing_audit_operator_blocks_edit_without_creating_companion(opened):
@@ -830,6 +1123,47 @@ def test_validation_uses_isolated_xml_and_maps_issue_keys(opened):
     assert all(not issue["key"] or pkg.element(issue["key"]) is not None for issue in issues)
 
 
+def test_validation_event_records_only_summary_and_snapshot_hash(opened):
+    pkg = opened.package
+    opened.editor.setField(pkg.key(next(pkg.iter_kind("dossier"))), "titel", "Sensitive validation title")
+    assert opened.save()
+
+    opened.validate(True)
+    worker = opened._worker
+    worker.wait()
+    QGuiApplication.processEvents()
+
+    event = next(row for row in opened.historyTable.records() if row["eventType"] == "validation")
+    detail = event["detail"]
+    assert detail["scope"] == "package-validation" and detail["mode"] == "full"
+    assert len(detail["metadataSha256"]) == 64
+    assert isinstance(detail["issueCounts"], dict)
+    assert "Sensitive validation title" not in str(detail)
+
+
+def test_read_only_validation_is_recorded_only_in_external_companion(opened, sip_dir):
+    from pathlib import Path
+
+    pkg = opened.package
+    opened.editor.setField(pkg.key(next(pkg.iter_kind("dossier"))), "titel", "Saved before validation")
+    assert opened.save()
+    metadata_before = pkg.metadata_path.read_bytes()
+    companion = Path(opened.auditCompanion)
+    opened.closePackage()
+    opened.openPackage(QUrl.fromLocalFile(str(sip_dir)), True)
+    journal_path = companion / "journal.sqlite3"
+    journal_before = journal_path.read_bytes()
+
+    opened.validate(True)
+    worker = opened._worker
+    worker.wait()
+    QGuiApplication.processEvents()
+
+    assert (sip_dir / "header" / "metadata.xml").read_bytes() == metadata_before
+    assert journal_path.read_bytes() != journal_before
+    assert any(row["eventType"] == "validation" for row in opened.historyTable.records())
+
+
 def test_validation_hash_cancellation_does_not_publish_success(opened, monkeypatch):
     import threading
     from PySide6.QtCore import QEventLoop, QTimer
@@ -1100,7 +1434,7 @@ def test_failed_initial_file_operation_does_not_block_metadata_save(opened):
     dossier = next(pkg.iter_kind("dossier"))
     opened.editor.setField(pkg.key(dossier), "titel", "Keep earlier edit")
     content = next(element for element in pkg.iter_kind("ordner") if pkg.text(element, "name") == "content")
-    FileController(opened).newFolder(pkg.key(content), "not allowed")
+    FileController(opened).newFolder(pkg.key(content), "not&allowed")
     assert opened.messages
     assert opened.save()
     assert "Keep earlier edit" in pkg.metadata_path.read_text(encoding="utf-8")

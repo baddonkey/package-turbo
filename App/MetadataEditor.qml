@@ -363,6 +363,14 @@ Pane {
                                 items: section.modelData.additionalData
                                 editable: !editor.readOnly && !section.modelData.readOnly
                             }
+                            AdditionalDataEditor {
+                                Layout.fillWidth: true
+                                visible: section.modelData.canHaveFileProperties || section.modelData.fileProperties.length > 0
+                                elementKey: section.modelData.key
+                                items: section.modelData.fileProperties
+                                editable: !editor.readOnly && !section.modelData.readOnly
+                                fileProperties: true
+                            }
                             ReferenceAttributesEditor {
                                 Layout.fillWidth: true
                                 visible: section.modelData.references.length > 0
