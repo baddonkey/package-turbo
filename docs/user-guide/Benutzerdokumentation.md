@@ -1,6 +1,6 @@
 # Package Turbo – Benutzerdokumentation
 
-Package Turbo ist ein eigenständiger Desktop-Arbeitsbereich für digitale Ablieferungen nach eCH-0160 mit Python, PySide6 und QML. Diese Dokumentation beschreibt die Arbeitsabläufe und den aktuellen Funktionsumfang von Package Turbo. Die Abbildungen zeigen das KOST-CECO-Testpaket `SIP_20220328_KOST_eCH1.2G_1a-3d-IO` in Package Turbo und werden mit `tools/doc_screenshots.py` erstellt.
+Package Turbo ist ein eigenständiger Desktop-Arbeitsbereich für digitale Ablieferungen nach eCH-0160 mit Python, PySide6 und QML. Diese Dokumentation beschreibt die Arbeitsabläufe und den aktuellen Funktionsumfang von Package Turbo. Die meisten Abbildungen zeigen eine Arbeitskopie des KOST-CECO-Testpakets `SIP_20220328_KOST_eCH1.2G_1a-3d-IO`.
 
 Package Turbo befindet sich in Entwicklung. Verwenden Sie für die Bearbeitung eine Arbeitskopie und bewahren Sie die ursprüngliche Ablieferung unverändert auf.
 
@@ -42,7 +42,7 @@ Grundlage sind die Spezifikation und die XML-Schemas von eCH-0160. Zusätzlich k
 
 Package Turbo unterstützt die Erstellung, Qualitätsprüfung und Sichtung von digitalen Ablieferungen gemäss dem Standard eCH-0160 – Archivische Ablieferungsschnittstelle. Die Metadaten des Pakets (`header/metadata.xml`) können gesichtet, erstellt und bearbeitet werden; die Primärdaten (Dateien im Ordner `content`) lassen sich direkt öffnen. Zusätzlich stehen Funktionen zur Prüfung der Metadaten, zur Suche, für Notizen und Stichproben zur Verfügung.
 
-Package Turbo öffnet und prüft Pakete der Standardversionen eCH-0160 v1.0, v1.1, v1.2 und v1.3 (XML-Namensraum `http://bar.admin.ch/arelda/v4`). Die Prüfung erfolgt gegen die im Paket unter `header/xsd` mitgelieferten XML-Schemas. Bei der Erstellung stehen alle vier Versionen zur Auswahl; die Voreinstellung ist v1.3 (Schema-Version 5.1). Das Speichern ändert die Standardversion eines vorhandenen Pakets nicht. Unbekannte Versionen werden schreibgeschützt geöffnet.
+Package Turbo öffnet und prüft Pakete der Standardversionen eCH-0160 v1.0, v1.1, v1.2 und v1.3 (XML-Namensraum `http://bar.admin.ch/arelda/v4`). Die Prüfung berücksichtigt die im Paket unter `header/xsd` mitgelieferten XML-Schemas und zusätzlich das mit Package Turbo ausgelieferte Schema der deklarierten Version. Fehlende oder nicht ladbare lokale Schemas werden gemeldet. Bei der Erstellung stehen alle vier Versionen zur Auswahl; die Voreinstellung ist v1.3 (Schema-Version 5.1). Das Speichern ändert die Standardversion eines vorhandenen Pakets nicht. Unbekannte Versionen werden schreibgeschützt geöffnet.
 
 Die Unterstützung der Paket-Schemas umfasst noch nicht für jedes Metadatum einen vollständigen Editorablauf. Beachten Sie die nachfolgend beschriebenen Einschränkungen.
 
@@ -76,7 +76,7 @@ Befehle in Menüs, Toolbar und Dialogen sind *kursiv* gesetzt. Menüpfade werden
 
 ### 2.1 Systemvoraussetzungen
 
-Package Turbo läuft unter Windows, macOS und Linux mit Python 3.11 oder neuer. Benötigt werden die Pakete PySide6 (ab 6.9) und lxml.
+Package Turbo läuft unter Windows, macOS und Linux mit Python 3.11 oder neuer. Die Installation richtet die benötigten Python-Pakete PySide6, lxml, msoffcrypto-tool, pypdf und rfc8785 ein.
 
 Package Turbo benötigt keine Java-Laufzeitumgebung.
 
@@ -120,7 +120,7 @@ Der Name des Toplevel-Ordners folgt dem Muster `SIP_[Ablieferungsdatum JJJJMMTT]
 | Paket schreibgeschützt öffnen | Im Menü *Paket → Paket schreibgeschützt öffnen...* wählen. Das Paket kann dann nicht bearbeitet werden. |
 | Erneutes Öffnen | Im Menü *Paket* werden das aktuelle und die drei zuletzt geöffneten Pakete angezeigt. |
 
-Die Liste der zuletzt geöffneten Pakete bleibt nach einem Neustart erhalten. Drag & Drop zum Öffnen eines Pakets ist möglich, solange kein Paket geöffnet ist.
+Die Liste der zuletzt geöffneten Pakete bleibt nach einem Neustart erhalten. Sie zeigt die Paketordnernamen; der vollständige Pfad erscheint beim Verweilen mit der Maus. Drag & Drop zum Öffnen eines Pakets ist möglich, solange kein Paket geöffnet ist.
 
 Nach dem Öffnen zeigt der Editor das Register *Überblick*:
 
@@ -199,7 +199,9 @@ Die **Menüleiste** enthält:
 - *Extras*: Suche, Paket vollständig validieren, Zeiträume auf Ablieferung kumulieren, *Normalisierung*, Stichprobe, *Benutzervorgaben*.
 - *Hilfe*: Benutzerdokumentation, Tastenbelegung, Über Package Turbo.
 
-Die **Toolbar** enthält Neues Paket, Paket öffnen, Speichern, Paket schliessen, Paket vollständig validieren, Reports, Neue Notiz, Stichprobe, Perspektive zurücksetzen (↺) und das Feld für die einfache Suche.
+Die **Toolbar** enthält Neues Paket, Paket öffnen, Speichern, Paket-Undo/Redo, Paket schliessen, Paket vollständig validieren, Reports, Neue Notiz, Stichprobe und Perspektive zurücksetzen (↺). Das Suchfeld öffnet die einfache Suche. Die Kopfzeile zeigt den Paketnamen sowie gegebenenfalls *Nur Lesen* oder *Ungespeichert*. Nicht verfügbare Befehle sind abgeschwächt dargestellt.
+
+Bei schmalen Bereichen werden Aktionsregister als Symbole dargestellt; ihre Namen erscheinen beim Verweilen mit der Maus. Lange Tabellen- und Navigatorwerte sowie eingeschränkte Auswahltexte können ebenfalls per Tooltip vollständig angezeigt werden.
 
 Das **Viewmenü** der Navigatoren befindet sich in deren Titelzeile: Filter (z. B. *HG*, *OSP*, *OSP+D*, *leer*) sowie *+* (Alles aufklappen) und *−* (Alles zuklappen).
 
@@ -330,7 +332,7 @@ Bei sehr grossen Ablieferungen wird *Alles aufklappen* automatisch deaktiviert, 
 
 Der Schwellwert gilt gemeinsam für alle Navigatoren.
 
-### 7.8 Aktionsviews: Validierungshilfe, Notiz, Stichprobe, Suche, Änderungen
+### 7.8 Aktionsviews: Validierungshilfe, Notiz, Stichprobe, Suche, Änderungen und Metadaten-Historie
 
 | Aktionsview | Inhalt |
 |---|---|
@@ -339,6 +341,7 @@ Der Schwellwert gilt gemeinsam für alle Navigatoren.
 | *Stichprobe* | Zufällig ausgewählte Dossiers. |
 | *Suche* | Resultate der einfachen und der erweiterten Suche. |
 | *Änderungen* | Änderungen an den Metadaten seit dem letzten Speichern. |
+| *Metadaten-Historie* | Dauerhafte Ereignisse, Suche und Filter, Wiederherstellung, Speicherbereinigung und PREMIS/METS-Export (siehe 9.6 und 9.8). |
 
 ### 7.9 Primärdaten in Navigatoren und Aktionsviews
 
@@ -524,6 +527,10 @@ Rechtsklick auf das Ordnungssystem → *Ordnungssystem neu nummerieren...* und d
 | Ausschneiden, Kopieren, Einfügen, Löschen | Text markieren, Rechtsklick → *Ausschneiden*, *Kopieren*, *Einfügen* oder *Löschen*; oder Menü *Bearbeiten*. |
 | Wertelisten bearbeiten | Felder mit festgelegten Werten (z. B. Erscheinungsform, Datenschutz, Prüfalgorithmus) werden über eine Auswahlliste bearbeitet. Die Werte stammen aus dem XSD des Pakets. |
 
+Bei einer Datei können unter *Dateieigenschaften* wiederholte technische Name-Wert-Paare
+(`<eigenschaft name="...">Wert</eigenschaft>`) hinzugefügt, geändert oder entfernt werden.
+Die zulässige Position und Wiederholung richten sich nach dem XSD des geöffneten Pakets.
+
 ![Feld mit Validierungsfehler (Dossiertitel zu kurz)](img/15-feldfehler.png)
 
 *Rückgängig* wirkt bei noch nicht übernommenen Eingaben im aktiven Textfeld. Für übernommene
@@ -591,22 +598,47 @@ Strukturelle Änderungen (Objekte erstellen, verschieben, löschen, zuweisen) er
 
 ### 9.6 Dauerhafte Metadaten-Historie
 
-Vor der ersten Bearbeitung wird die Identität unter *Bearbeitet durch* bestätigt.
-Nach der Bestätigung führen Sie die gewünschte Bearbeitung erneut aus. Die Identität
-kann auch unter *Extras → Benutzervorgaben → Metadaten-Historie* festgelegt werden.
+Vor dem Erstellen eines Pakets oder der ersten Bearbeitung wird die Identität unter
+*Erstellt durch* bzw. *Bearbeitet durch* bestätigt. Beim Erstellen öffnet sich danach der
+Erstellungsdialog; eine durch die Identitätsabfrage unterbrochene Bearbeitung führen Sie
+anschliessend erneut aus. Die Identität kann auch unter
+*Extras → Benutzervorgaben → Metadaten-Historie* festgelegt werden.
 Sie wird bei den zugehörigen Änderungen gespeichert; verwenden Sie keine vertraulichen
 Zugangsdaten in diesem Feld.
+Beim Erstellen eines Pakets wird ein erstes Ereignis mit Version, Ablieferungstyp und
+Prüfsummenmanifest des erzeugten SIP gespeichert. Ohne bestätigte Identität wird kein neues
+Paket angelegt.
 
 Die Aktionsview *Metadaten-Historie* zeigt dauerhaft gespeicherte Ereignisse mit UTC-Zeit,
 Bearbeiter, Ergebnis und alten/neuen Metadatenwerten. Doppelklick öffnet die Ereignis-
 und Transaktionsdetails. Die Historie bleibt nach *Speichern* und erneutem Öffnen erhalten.
 *Verwerfen* dokumentiert verworfene Änderungen, ohne sie in die XML-Datei zu übernehmen.
+Die Suchzeile sowie die Filter *Ereignis* und *Ergebnis* grenzen die sichtbaren Zeilen ein;
+Kopieren exportiert die gefilterte Ansicht, die vollständige Historie bleibt unverändert.
+Eine ausdrücklich gestartete Validierung wird mit Modus, Ergebnis, Fehler-/Warnungsanzahl und
+Metadaten-Prüfsumme protokolliert; Feldwerte werden dabei nicht dupliziert. Automatische
+Zwischenprüfungen während der Bearbeitung erzeugen keine eigenen Ereignisse.
+
+In der Toolbar der Metadaten-Historie öffnet *PREMIS/METS exportieren...* den Exportdialog.
+Wählen Sie *Vollständig*, um Ereignisdetails einzuschliessen, oder *Redigiert*, um diese
+Details auszulassen. Bedienerkennung, Paket-/Objektkennungen und Prüfsummen bleiben auch im
+redigierten PREMIS sichtbar; Dateinamen und alte/neue Werte aus Ereignisdetails werden ausgelassen.
+*Nur PREMIS XML...* speichert ein einzelnes PREMIS-Dokument. *SIP + METS/PREMIS...* erstellt
+im gewählten Ordner einen neuen Unterordner `<SIP-Name>.package-turbo-export` mit dem SIP-ZIP,
+der PREMIS-Datei und dem METS-Dokument. METS 2 und METS 1.12.1 stehen zur Auswahl. METS
+referenziert den tatsächlichen ZIP-Dateinamen und dessen SHA-256-Prüfsumme. Bestehende
+Exportordner werden nicht überschrieben; das geöffnete SIP bleibt unverändert.
+Der erfolgreiche Export wird anschliessend im Journal protokolliert. Das exportierte PREMIS
+enthält den angegebenen Journalstand vor diesem Abschlussereignis; ein späterer Export enthält
+auch das Abschlussereignis des vorherigen Exports.
 
 Der neben dem Paket liegende Ordner `<SIP-Name>.package-turbo` enthält das Journal und
 den Wiederherstellungszustand. Er gehört nicht in `header` oder `content`. Die Historie
 enthält auch frühere, möglicherweise vertrauliche Werte: schützen Sie diesen Ordner
 und bewahren Sie ihn beim Weitergeben einer Arbeitskopie separat auf. Automatisches
 Zuordnen nach einem Umbenennen oder Kopieren des Pakets ist noch nicht umgesetzt.
+Bei einem bereits vorhandenen SIP wird beim ersten schreibenden Zugriff der aktuelle Stand
+mit Prüfsummen registriert; eine davor liegende Bearbeitungsgeschichte wird nicht erfunden.
 
 Bei einem unterbrochenen Speichervorgang wählen Sie *Wiederherstellen* in der Metadaten-
 Historie. Die Wiederherstellung prüft die tatsächliche XML-Datei gegen die dokumentierten
@@ -635,8 +667,9 @@ Texte im aktiven Eingabefeld gehören nicht zu dieser Wiederherstellung.
 > **Wichtig:** Automatische Aufbewahrungsbereinigung folgt noch; die manuelle Vorschau ist
 > nachfolgend beschrieben. Der Undo-Verlauf ist
 > sitzungsgebunden; nach einem Absturz können unbenutzte
-> Schnappschussordner verbleiben. Die Erfassung aller Prüf-/Exportvorgänge und die
-> vollständige PREMIS-Objektmodellierung sind noch nicht abgeschlossen.
+> Schnappschussordner verbleiben. Automatische Zwischenprüfungen werden nicht protokolliert;
+> erfolgreiche Exporte erzeugen ein Abschlussereignis. Die vollständige PREMIS-Objektmodellierung
+> ist noch nicht abgeschlossen.
 
 ### 9.7 Fortschritt und Abbrechen
 
@@ -741,15 +774,17 @@ Package Turbo prüft die Dateien in `content` anhand des **Katalogs archivischer
 | Nicht akzeptiert (z. B. ODT/ODP, DNG, MHTML, ARC, STEP) | Fehler |
 | Nicht im KaD erfasst | Warnung |
 
-> **Wichtig:** Die Formaterkennung verwendet derzeit nur die Dateiendung. Varianten mit gleicher Endung (z. B. PDF/A-3 oder GeoTIFF) lassen sich damit nicht unterscheiden. Die Bewertung ist kein Nachweis der Formatkonformität, etwa von PDF/A. Package Turbo konvertiert keine Dateien.
+> **Wichtig:** Die KaD-Bewertung beruht grundsätzlich auf der Dateiendung. Für derzeit hinterlegte DROID-PUIDs (ODT und DOCX) wird zusätzlich die identifizierte Formatbewertung verwendet. Bei der vollständigen Validierung vergleicht DROID ausserdem die Dateiendung mit seiner Signaturerkennung; erkannte Abweichungen werden als Fehler gemeldet. DROID muss über `PATH` oder `DROID_EXECUTABLE` verfügbar sein. Fehlt DROID oder schlägt die Erkennung fehl, erscheint eine Warnung. Auch DROID weist keine Formatkonformität nach (z. B. PDF/A); Varianten mit gleicher Endung (z. B. PDF/A-3 oder GeoTIFF) lassen sich weiterhin nicht unterscheiden. Package Turbo konvertiert keine Dateien.
+
+Die vollständige Validierung erkennt passwortgeschützte PDFs, verschlüsselte Einträge in ZIP-Dateien und passwortgeschützte Office-Dateien in unterstützten Formaten. Andere Verschlüsselungsverfahren werden nicht umfassend erkannt; ein fehlender Hinweis ist daher kein allgemeiner Nachweis für unverschlüsselte Dateien.
 
 #### 10.4.2 Paketgrösse
 
-Prüfung, ob das Paket die maximale Grösse von 8 GB übersteigt. Eine Aufteilung auf mehrere Pakete wird nicht angeboten.
+Warnung, wenn das Paket die empfohlene Grösse von 8 GB übersteigt. Klären Sie grössere Ablieferungen vorab mit dem zuständigen Archiv. Eine Aufteilung auf mehrere Pakete wird nicht angeboten. Wenn eine Ablieferung aufgrund ihrer Grösse auf mehrere SIP aufgeteilt werden soll, ist vorher das zuständige Archiv zu kontaktieren.
 
 #### 10.4.3 Pfadlänge
 
-Prüfung, ob der Pfad zu einer Datei oder einem Ordner (inkl. Toplevel-Ordner) 180 Zeichen oder mehr umfasst.
+Warnung, wenn der Pfad zu einer Datei oder einem Ordner (inkl. Toplevel-Ordner) 180 Zeichen oder mehr umfasst. Kürzere Pfade werden empfohlen.
 
 | Fehlerbehebung | Vorgehen |
 |---|---|
@@ -780,6 +815,7 @@ Prüfung, ob sich im Toplevel-Ordner ausschliesslich die Ordner `header` und `co
 #### 10.4.8 Inhalt Ordner header
 
 Prüfung, ob der Ordner `header` ausschliesslich `metadata.xml` und den Ordner `xsd` mit den XSD-Dateien enthält.
+Auch innerhalb von `header/xsd` sind nur XSD-Dateien zulässig; Primärdaten werden dort als unzulässiger Inhalt gemeldet.
 
 | Fehlerbehebung | Vorgehen |
 |---|---|
@@ -792,14 +828,19 @@ Prüfung, ob im Paket Ordner ohne Dateien vorhanden sind (Warnung). Doppelklick 
 
 #### 10.4.10 Zeichensatz
 
-Prüfung, ob Datei- und Ordnernamen nur die Zeichen `A–Z a–z 0–9 _ . -` enthalten.
+Prüfung des eCH-0160-Zeichensatzes für Datei- und Ordnernamen: ASCII-Buchstaben und Ziffern
+sowie `! # $ % ( ) + , - . = @ [ ] { } ~ _` und Leerzeichen.
 
 | Fehlerbehebung | Vorgehen |
 |---|---|
-| Unerlaubte Zeichen ersetzen | Rechtsklick auf die Meldung oder *Extras → Normalisierung → Datei- und Ordnernamen normalisieren...*. Umlaute werden umschrieben (ä → ae), Leerzeichen und andere Zeichen durch `_` ersetzt. |
+| Unerlaubte Zeichen ersetzen | Rechtsklick auf die Meldung oder *Extras → Normalisierung → Datei- und Ordnernamen normalisieren...*. Umlaute werden umschrieben (ä → ae); Zeichen ausserhalb des erlaubten Zeichensatzes werden durch `_` ersetzt. Leerzeichen bleiben erhalten. |
 | Rückgängig machen | *Extras → Normalisierung → Datei- und Ordnernamen denormalisieren...*. |
 
 Die Normalisierung verändert die Arbeitskopie. Beim nächsten *Speichern* werden auch zuvor vorgenommene Metadatenänderungen übernommen.
+
+#### 10.4.11 Transfercontainer
+
+Package Turbo öffnet und bearbeitet entpackte SIP-Verzeichnisse. Transfercontainer (z. B. ZIP-Dateien) werden weder erstellt noch geöffnet. Falls ein Empfangsarchiv einen Transfercontainer verlangt, muss dessen Format vor der Übermittlung mit dem Archiv vereinbart werden.
 
 ### 10.5 Prüfung des Aufbaus des Ordnungssystems und der Dossierbenennung
 
@@ -838,7 +879,7 @@ Beim Löschen von Dateien in den Metadaten werden auch ihre Zuweisungen entfernt
 | 10.7.4 Identische Dateien | Dateien mit gleicher Prüfsumme (Warnung). | Doppelklick, Datei im Paket-Navigator löschen. |
 | 10.7.5 Keine Zuweisung | Dateien in `content`, die weder einem Dossier noch einem Dokument zugewiesen sind. | Datei zuweisen (8.3.6). |
 | 10.7.6 Leere Dossiers | Dossiers und Subdossiers ohne Dateien (Warnung). | Dossier löschen oder Datei zuweisen. |
-| 10.7.7 Schutzfrist | Schutzfristenkategorie und Schutzfrist müssen auf Stufe Ablieferung bzw. Dossier beide vorhanden und im Paket einheitlich sein. | Im Editor ergänzen; die Verteilung zeigt das Register *Statistik*. |
+| 10.7.7 Schutzfrist | Schutzfristenkategorie und Schutzfrist müssen paarweise vorhanden sein. Im Paket sind Schutzfristen einheitlich auf einer Ebene (Ablieferung, Ordnungssystemposition oder Dossier) zu erfassen. | Im Editor ergänzen; die Verteilung zeigt das Register *Statistik*. |
 | 10.7.8 Zeitraum | Zeiträume von Dossiers und Dokumenten müssen innerhalb des übergeordneten Zeitraums liegen (Warnung). | Im Editor korrigieren oder Kontextmenü *Nach oben übernehmen*; *Extras → Zeiträume auf Ablieferung kumulieren*. |
 | 10.7.9 Offener Zeitraum | Dossiers mit *keine Angabe* als *bis*-Datum (Warnung). | Im Editor eine konkrete Angabe erfassen. |
 | 10.7.10 Allgemein | Validierung des metadata.xml gegen das XSD im Ordner `header/xsd`. Die technische Meldung beginnt mit «Das Paket entspricht nicht den Anforderungen …» und nennt die Zeile. | Fehler im metadata.xml analysieren. |
@@ -1020,6 +1061,17 @@ Eine Perspektive speichert die Grössen der Bereiche. Ihre Positionen bleiben un
 ### 16.2 Grundeinstellung wiederherstellen
 
 Mit ↺ in der Toolbar oder *Ansicht → Perspektive zurücksetzen* wird die Grundeinstellung der Benutzeroberfläche wiederhergestellt.
+
+### 16.3 Farbschema und weitere Einstellungen
+
+Unter *Extras → Benutzervorgaben → Erscheinungsbild → Farbschema* stehen *Systemstandard*,
+*Hell* und *Dunkel* zur Auswahl. *Systemstandard* ist die Voreinstellung und folgt dem vom
+Betriebssystem gemeldeten Farbschema; falls kein Schema gemeldet wird, dient die Systempalette
+als Fallback. Mit *OK* wird die Auswahl übernommen und für den nächsten Start gespeichert.
+
+Im selben Dialog können Sie die Identität, Speicher- und Aufbewahrungsgrenzen, Validierung,
+Navigatoren, Suche, Stichprobe, Report-Hersteller und Sprache einstellen. Die Sprachänderung
+wird erst nach einem Neustart wirksam; das Farbschema wird unmittelbar übernommen.
 
 ![Benutzervorgaben](img/21-benutzervorgaben.png)
 

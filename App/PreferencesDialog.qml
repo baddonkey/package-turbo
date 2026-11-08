@@ -17,6 +17,26 @@ Dialog {
         spacing: 8
 
         GroupBox {
+            title: qsTr("Erscheinungsbild")
+            Layout.fillWidth: true
+            RowLayout {
+                Layout.fillWidth: true
+                Label { text: qsTr("Farbschema") }
+                ComboBox {
+                    id: themeBox
+                    objectName: "themeModeBox"
+                    Layout.fillWidth: true
+                    model: [qsTr("Systemstandard"), qsTr("Hell"), qsTr("Dunkel")]
+                }
+                Label {
+                    visible: themeBox.currentIndex === 0
+                    text: backend.systemTheme === "dark" ? qsTr("System: Dunkel") : qsTr("System: Hell")
+                    color: palette.placeholderText
+                }
+            }
+        }
+
+        GroupBox {
             title: qsTr("Metadaten-Historie")
             Layout.fillWidth: true
             ColumnLayout {
@@ -84,7 +104,7 @@ Dialog {
             RowLayout {
                 anchors.fill: parent
                 Label { text: qsTr("Name des Report-Herstellers") }
-                TextField { id: reporterField; Layout.fillWidth: true }
+                TextField { id: reporterField; objectName: "reporterNameField"; Layout.fillWidth: true }
             }
         }
 
@@ -110,6 +130,7 @@ Dialog {
         sampleSizeSpin.value = backend.sampleSize
         reporterField.text = backend.reporterName
         languageBox.currentIndex = backend.language === "fr" ? 1 : 0
+        themeBox.currentIndex = backend.themeMode === "light" ? 1 : backend.themeMode === "dark" ? 2 : 0
     }
     onAccepted: {
         backend.auditOperator = auditOperatorField.text
@@ -123,5 +144,6 @@ Dialog {
         backend.sampleSize = sampleSizeSpin.value
         backend.reporterName = reporterField.text
         backend.language = languageBox.currentIndex === 1 ? "fr" : "de"
+        backend.themeMode = ["system", "light", "dark"][themeBox.currentIndex]
     }
 }

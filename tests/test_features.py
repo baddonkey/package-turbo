@@ -71,13 +71,146 @@ def test_reference_attributes_follow_version_without_changing_assignments(tmp_pa
         assert reference.get("version") == "2" and reference.text == file_element.get("id")
         editor.setReferenceAttribute(pkg.key(document), 0, "information", "")
         assert "information" not in reference.attrib and reference.get("version") == "2"
+        editor.setReferenceAttribute(pkg.key(document), 0, "information", "original")
     assert pkg.referenced_ids() == before
     assert not [issue for issue in Validator(pkg).run(full=False) if issue["checkId"] == "schema"]
     pkg.save()
     reopened = SipPackage.open_folder(pkg.root_dir)
     assert reopened.referenced_ids() == before
+    assert not [issue for issue in Validator(reopened).run(full=True) if issue["checkId"] == "invalid_reference"]
+    reopened_reference = next(reopened.iter_kind("dateiRef"))
+    if version in ("1.0", "1.1"):
+        assert not reopened_reference.attrib
+    else:
+        assert {name: reopened_reference.get(name) for name in
+                ("version", "repraesentation", "information", "reihung")} == {
+                    "version": "2", "repraesentation": "master", "information": "original", "reihung": "1"}
+    assert not [issue for issue in Validator(reopened).run(full=True) if issue["checkId"] == "schema"]
     if version in ("1.2", "1.3"):
         assert next(reopened.iter_kind("dateiRef")).get("repraesentation") == "master"
+
+
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+def test_files_relationship_targets_roundtrip_by_release(tmp_path, version):
+    from ph_backend import files, package_factory, structure
+    from ph_backend.sip import localname
+
+    pkg = package_factory.create_package(tmp_path, f"SIP_20261107_Test_FILES_Relations_{version}", "Test",
+                                         version=version, delivery_type="FILES")
+    content = next(element for element in pkg.iter_kind("ordner") if pkg.text(element, "name") == "content")
+    position = next(pkg.iter_kind("ordnungssystemposition"))
+    dossier = structure.add_objects(pkg, position, "dossier")[0]
+    document = structure.add_objects(pkg, dossier, "dokument")[0]
+    targets = [("dossier", dossier), ("dokument", document)]
+    if "mappe" in structure.allowed_children(pkg, dossier):
+        targets.append(("mappe", structure.add_objects(pkg, dossier, "mappe")[0]))
+
+    sources = []
+    for index, (kind, _) in enumerate(targets):
+        source = tmp_path / f"{kind}-{index}.txt"
+        source.write_text(f"{kind} reference", encoding="utf-8")
+        sources.append(source)
+    files.import_paths(pkg, content, sources)
+    file_elements = list(pkg.children(content, "datei"))
+
+    expected = []
+    for (kind, owner), file_element in zip(targets, file_elements):
+        assert structure.assign_files(pkg, owner, [file_element]) == 1
+        assert pkg.referenced_files(owner) == [file_element]
+        expected.append((kind, file_element.get("id")))
+
+    schema_issues = [issue for issue in Validator(pkg).run(full=True) if issue["checkId"] == "schema"]
+    assert not schema_issues, [(issue["description"], issue["value"]) for issue in schema_issues]
+    pkg.save()
+    reopened = SipPackage.open_folder(pkg.root_dir)
+    actual = [(localname(reference.getparent()), identifier)
+              for reference in reopened.root.iter()
+              if localname(reference) == "dateiRef"
+              for identifier in (reference.text or "").split()]
+
+    assert set(actual) == set(expected)
+    issues = Validator(reopened).run(full=True)
+    assert not [issue for issue in issues if issue["checkId"] in {"schema", "invalid_reference"}]
+
+
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+def test_files_layout_and_classification_roundtrip_by_release(tmp_path, version):
+    from ph_backend import files, package_factory, structure
+
+    pkg = package_factory.create_package(
+        tmp_path, f"SIP_20261107_Test_FILES_LayoutClassification_{version}", "Test",
+        version=version, delivery_type="FILES")
+    content = next(element for element in pkg.iter_kind("ordner") if pkg.text(element, "name") == "content")
+    group = files.create_folder(pkg, content, "series")
+    source = tmp_path / "primary.txt"
+    source.write_text("primary content", encoding="utf-8")
+    files.import_paths(pkg, group, [source])
+    file_element = next(element for element in pkg.children(group, "datei"))
+    dossier = structure.add_objects(pkg, next(pkg.iter_kind("ordnungssystemposition")), "dossier")[0]
+    structure.assign_files(pkg, dossier, [file_element])
+    file_id = file_element.get("id")
+
+    pkg.save()
+    reopened = SipPackage.open_folder(pkg.root_dir)
+    reopened_file = reopened.file_by_id(file_id)
+    reopened_dossier = next(reopened.iter_kind("dossier"))
+
+    assert reopened.relpath(reopened_file).as_posix() == "content/series/primary.txt"
+    assert reopened.fs_path(reopened_file).is_file()
+    assert reopened.referenced_files(reopened_dossier) == [reopened_file]
+    valid_issues = Validator(reopened).run(full=True)
+    assert not [issue for issue in valid_issues
+                if issue["checkId"] in {"schema", "invalid_reference", "unassigned_files",
+                                        "missing_file", "surplus_file", "missing_folder", "surplus_folder"}]
+
+    reference = reopened.children(reopened_dossier, "dateiRef")[0]
+    reopened_dossier.remove(reference)
+    unassigned = [issue for issue in Validator(reopened).run(full=True)
+                  if issue["checkId"] == "unassigned_files"]
+    assert any(issue["value"] == "content/series/primary.txt" for issue in unassigned), version
+
+
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+def test_files_grouping_assignment_roundtrip_by_release(tmp_path, version):
+    from ph_backend import files, package_factory, structure
+
+    pkg = package_factory.create_package(
+        tmp_path, f"SIP_20261108_Test_FILES_Grouping_{version}", "Test",
+        version=version, delivery_type="FILES")
+    content = next(element for element in pkg.iter_kind("ordner") if pkg.text(element, "name") == "content")
+    group = files.create_folder(pkg, content, "series")
+    sources = []
+    for name in ("assigned.txt", "unassigned.txt"):
+        source = tmp_path / name
+        source.write_text(name, encoding="utf-8")
+        sources.append(source)
+    files.import_paths(pkg, group, sources)
+    file_elements = {pkg.text(element, "name"): element for element in pkg.children(group, "datei")}
+    dossier = structure.add_objects(pkg, next(pkg.iter_kind("ordnungssystemposition")), "dossier")[0]
+    if "mappe" in structure.allowed_children(pkg, dossier):
+        assignment_target = structure.add_objects(pkg, dossier, "mappe")[0]
+        target_kind = "mappe"
+    else:
+        assignment_target = dossier
+        target_kind = "dossier"
+    assert structure.assign_files(pkg, assignment_target, [file_elements["assigned.txt"]]) == 1
+
+    pkg.save()
+    reopened = SipPackage.open_folder(pkg.root_dir)
+    reopened_dossier = next(reopened.iter_kind("dossier"))
+    reopened_target = (next(reopened_dossier.iter(reopened.q("mappe")))
+                       if target_kind == "mappe" else reopened_dossier)
+    reopened_assigned = reopened.file_by_id(file_elements["assigned.txt"].get("id"))
+    reopened_unassigned = reopened.file_by_id(file_elements["unassigned.txt"].get("id"))
+
+    assert reopened.relpath(reopened_assigned).as_posix() == "content/series/assigned.txt"
+    assert reopened.fs_path(reopened_assigned).is_file()
+    assert reopened.referenced_files(reopened_target) == [reopened_assigned]
+    assert reopened.relpath(reopened_unassigned).as_posix() == "content/series/unassigned.txt"
+    issues = Validator(reopened).run(full=True)
+    assert not [issue for issue in issues if issue["checkId"] in {"schema", "invalid_reference"}]
+    unassigned = [issue for issue in issues if issue["checkId"] == "unassigned_files"]
+    assert [issue["value"] for issue in unassigned] == ["content/series/unassigned.txt"], version
 
 
 def test_v13_datei_ref_supports_multiple_file_ids(tmp_path):
@@ -145,6 +278,64 @@ def test_repeated_row_reordering_preserves_element_attributes(sip_dir):
     editor.setRepeatedField(pkg.key(document), "autor", [{"value": "Changed first", "sourceIndex": 1}])
     assert pkg.children(document, "autor") == [first]
     assert first.get("{urn:vendor}source") == "first-source"
+
+
+def test_filename_validation_matches_ech0160_ascii_subset():
+    from ph_backend import files
+
+    allowed = "AZaz09!#$%()+,-.=@[]{}~_ "
+    assert files.is_valid_name(allowed)
+    assert files.sanitize_name(allowed) == allowed
+    assert not files.is_valid_name("name&value.txt")
+    assert not files.is_valid_name("name\\value.txt")
+    assert not files.is_valid_name("é.txt")
+    assert not files.is_valid_name(".")
+    assert not files.is_valid_name("..")
+
+
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+@pytest.mark.parametrize("delivery_type", ["GEVER", "FILES"])
+def test_file_eigenschaft_roundtrips_in_editor_and_sip(tmp_path, version, delivery_type):
+    from ph_backend import files, package_factory
+
+    pkg = package_factory.create_package(tmp_path, f"SIP_20261106_Test_Eigenschaft_{version}_{delivery_type}", "Test",
+                                         version=version, delivery_type=delivery_type)
+    content = next(element for element in pkg.iter_kind("ordner") if pkg.text(element, "name") == "content")
+    source = tmp_path / "table.csv"
+    source.write_text("a;b\n1;2\n", encoding="utf-8")
+    files.import_paths(pkg, content, [source])
+    file_element = next(element for element in pkg.children(content, "datei"))
+    editor = MetadataEditor()
+    editor.set_package(pkg)
+    editor.showElement(pkg.key(file_element))
+    section = next(item for item in editor.sections if item["kind"] == "datei")
+    assert section["canHaveFileProperties"]
+    assert section["fileProperties"] == []
+
+    editor.setFileProperties(pkg.key(file_element), [
+        {"name": "Feldtrenner", "value": ";"}, {"name": "Zeichensatz", "value": "UTF-8"}])
+    assert pkg.file_properties(file_element) == [("Feldtrenner", ";"), ("Zeichensatz", "UTF-8")]
+    assert not [issue for issue in Validator(pkg).run(full=True) if issue["checkId"] == "schema"]
+
+    pkg.save()
+    reopened = SipPackage.open_folder(pkg.root_dir, read_only=True)
+    reopened_file = next(element for element in reopened.iter_kind("datei")
+                         if reopened.text(element, "name") == "table.csv")
+    assert reopened.file_properties(reopened_file) == [("Feldtrenner", ";"), ("Zeichensatz", "UTF-8")]
+
+
+def test_french_catalog_translates_audit_export_and_file_property_controls(app):
+    from pathlib import Path
+    from PySide6.QtCore import QTranslator
+
+    catalog = Path(__file__).resolve().parents[1] / "App" / "i18n" / "package_turbo_fr.qm"
+    translator = QTranslator()
+    assert translator.load(str(catalog))
+    assert translator.translate("AuditExportDialog", "PREMIS/METS exportieren") == "Exporter PREMIS/METS"
+    assert translator.translate("AuditExportDialog", "Nur PREMIS XML...") == "PREMIS XML uniquement..."
+    assert translator.translate("HistoryView", "Historie durchsuchen") == "Rechercher dans l'historique"
+    assert translator.translate("AdditionalDataEditor", "Dateieigenschaften") == "Propriétés du fichier"
+    assert translator.translate("Main", "Name (ASCII-Buchstaben, Ziffern, ! # $ % ( ) + , - . = @ [ ] { } ~ _ und Leerzeichen)")
 
 
 def test_scalar_bulk_edit_cannot_overwrite_repeated_authors(sip_dir):

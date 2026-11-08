@@ -32,7 +32,7 @@ Dialog {
 
     ColumnLayout {
         anchors.fill: parent
-        Label { text: root.label; wrapMode: Text.Wrap; Layout.fillWidth: true }
+        Label { objectName: "inputDialogPrompt"; text: root.label; wrapMode: Text.Wrap; Layout.fillWidth: true }
         TextField {
             id: field
             Layout.fillWidth: true

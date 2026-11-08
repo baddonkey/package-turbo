@@ -19,9 +19,13 @@ ColumnLayout {
             required property var modelData
             Layout.fillWidth: true
             Label {
+                id: referenceNameLabel
                 Layout.fillWidth: true
                 text: reference.modelData.name + " (" + reference.modelData.fileId + ")"
                 elide: Text.ElideMiddle
+                ToolTip.visible: referenceNameHover.hovered && truncated
+                ToolTip.text: text
+                HoverHandler { id: referenceNameHover }
             }
             Repeater {
                 model: reference.modelData.attributes
@@ -30,9 +34,13 @@ ColumnLayout {
                     required property var modelData
                     Layout.fillWidth: true
                     Label {
+                        id: attributeNameLabel
                         Layout.preferredWidth: 230
                         text: attribute.modelData.name
                         elide: Text.ElideMiddle
+                        ToolTip.visible: attributeNameHover.hovered && truncated
+                        ToolTip.text: text
+                        HoverHandler { id: attributeNameHover }
                     }
                     TextField {
                         objectName: "referenceAttribute-" + attribute.modelData.name + "-" + reference.modelData.index

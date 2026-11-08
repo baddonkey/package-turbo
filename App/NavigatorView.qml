@@ -14,6 +14,7 @@ Pane {
     property Menu contextMenu: null
     property bool acceptsFileDrops: false
 
+    readonly property var filterOptions: [{ mode: "all", label: qsTr("Alle anzeigen") }].concat(root.filters)
     readonly property int currentKey: treeView.selectionModel.currentIndex.valid
                                       ? treeModel.keyAt(treeView.selectionModel.currentIndex) : 0
     readonly property string currentKind: treeView.selectionModel.currentIndex.valid
@@ -127,28 +128,30 @@ Pane {
                     TapHandler { onDoubleTapped: root.titleDoubleClicked() }
                     ToolTip.visible: titleHover.hovered
                     ToolTip.delay: 800
-                    ToolTip.text: qsTr("Doppelklick: Ansicht maximieren / wiederherstellen")
+                    ToolTip.text: qsTr("%1 — Doppelklick: Ansicht maximieren / wiederherstellen").arg(root.title)
                     HoverHandler { id: titleHover }
                 }
 
-                Repeater {
-                    model: root.filters
-
-                    ToolButton {
-                        required property var modelData
-                        text: modelData.label
-                        checkable: true
-                        checked: root.currentFilter === modelData.mode
-                        font.pixelSize: 11
-                        ToolTip.visible: hovered
-                        ToolTip.text: modelData.tip
-                        onClicked: root.filterRequested(checked ? modelData.mode : "all")
+                ComboBox {
+                    visible: root.filters.length > 0
+                    Layout.preferredWidth: 190
+                    Layout.minimumWidth: 140
+                    Layout.maximumWidth: 230
+                    model: root.filterOptions
+                    textRole: "label"
+                    currentIndex: {
+                        const index = root.filterOptions.findIndex(option =>
+                            option.mode === root.currentFilter || (root.currentFilter === "" && option.mode === "all"))
+                        return Math.max(0, index)
                     }
+                    onActivated: function (index) { root.filterRequested(root.filterOptions[index].mode) }
+                    ToolTip.visible: hovered && currentIndex >= 0
+                    ToolTip.text: currentIndex >= 0 ? root.filterOptions[currentIndex].label : ""
                 }
 
                 ToolButton {
-                    text: "+"
-                    font.bold: true
+                    icon.source: "icons/plus.svg"
+                    icon.color: palette.buttonText
                     enabled: root.treeModel && root.treeModel.itemCount() <= backend.expandThreshold
                     ToolTip.visible: hovered
                     ToolTip.text: enabled ? qsTr("Alles aufklappen")
@@ -157,8 +160,8 @@ Pane {
                 }
 
                 ToolButton {
-                    text: "\u2212"
-                    font.bold: true
+                    icon.source: "icons/minus.svg"
+                    icon.color: palette.buttonText
                     ToolTip.visible: hovered
                     ToolTip.text: qsTr("Alles zuklappen")
                     onClicked: treeView.collapseRecursively()
@@ -169,9 +172,39 @@ Pane {
         HorizontalHeaderView {
             id: header
             Layout.fillWidth: true
+            Layout.preferredHeight: 48
             syncView: treeView
             clip: true
             visible: root.columnRatios.length > 1
+
+            delegate: Rectangle {
+                id: headerCell
+                required property int index
+                required property var display
+
+                implicitWidth: 80
+                implicitHeight: 48
+                color: palette.button
+                border.color: palette.mid
+
+                Label {
+                    id: headerLabel
+                    objectName: "navigatorHeadingLabel"
+                    anchors.fill: parent
+                    anchors.margins: 3
+                    text: headerCell.display ?? ""
+                    font.bold: true
+                    font.pixelSize: 10
+                    wrapMode: Text.WrapAnywhere
+                    maximumLineCount: 3
+                    elide: Text.ElideRight
+                    verticalAlignment: Text.AlignVCenter
+                }
+
+                ToolTip.visible: headerHover.hovered && headerLabel.truncated
+                ToolTip.text: headerCell.display ?? ""
+                HoverHandler { id: headerHover }
+            }
         }
 
         TreeView {
@@ -240,19 +273,23 @@ Pane {
                     }
 
                     Label {
+                        id: treeLabel
                         Layout.fillWidth: true
                         text: cell.label ?? ""
                         elide: Text.ElideRight
-                        color: cell.flag === "unassigned" ? "#c62828"
-                             : (cell.isCurrent || cell.isSelected) ? palette.highlightedText : palette.text
+                            color: (cell.isCurrent || cell.isSelected) ? palette.highlightedText
+                                : cell.flag === "unassigned" ? palette.brightText : palette.text
                         font.italic: cell.flag === "unassigned"
+                            ToolTip.visible: cellHover.hovered && truncated
+                            ToolTip.text: text
+                            HoverHandler { id: cellHover }
                     }
 
                     Label {
                         visible: cell.columnIndex === 0 && cell.hasNote === true
                         text: "N"
                         font.bold: true
-                        color: "#ef6c00"
+                        color: (cell.isCurrent || cell.isSelected) ? palette.highlightedText : palette.link
                         ToolTip.visible: noteHover.hovered
                         ToolTip.text: qsTr("Zu diesem Objekt ist eine Notiz erfasst")
                         HoverHandler { id: noteHover }

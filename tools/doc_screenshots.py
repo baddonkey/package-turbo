@@ -19,7 +19,7 @@ from PySide6.QtPdf import QPdfDocument  # noqa: E402
 from PySide6.QtQml import QQmlApplicationEngine  # noqa: E402
 
 import main  # noqa: E402
-from ph_backend import reports  # noqa: E402
+from ph_backend import notes, reports  # noqa: E402
 from ph_backend.backend import Backend  # noqa: E402
 from ph_backend.sip import SipPackage  # noqa: E402
 
@@ -31,8 +31,15 @@ STEP_MS = 900
 
 QSettings.setDefaultFormat(QSettings.Format.IniFormat)
 QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(WORK / "settings"))
-if LANG == "fr":
-    Backend.language = property(lambda self: "fr")
+
+
+class ScreenshotBackend(Backend):
+    def __init__(self, settings):
+        super().__init__(settings)
+        self.language = LANG
+        self.themeMode = "light"
+        self.auditOperator = "Dokumentation"
+        self.reporterName = "Dokumentation"
 
 
 class Driver:
@@ -50,14 +57,24 @@ class Driver:
     def find(self, name: str) -> QObject:
         obj = self.win.findChild(QObject, name)
         if obj is None:
+            items = [self.win.contentItem()]
+            while items:
+                item = items.pop()
+                if item.objectName() == name:
+                    return item
+                items.extend(item.childItems())
+        if obj is None:
             raise RuntimeError(f"QML object {name} not found")
         return obj
 
     def call(self, name: str, method: str, *args) -> None:
-        QMetaObject.invokeMethod(self.find(name), method, *[Q_ARG("QVariant", a) for a in args])
+        if not QMetaObject.invokeMethod(self.find(name), method, *[Q_ARG("QVariant", a) for a in args]):
+            raise RuntimeError(f"Cannot invoke {name}.{method}")
 
     def shot(self, name: str) -> None:
-        self.win.grabWindow().save(str(OUT / f"{name}.png"))
+        image = self.win.grabWindow()
+        if image.isNull() or not image.save(str(OUT / f"{name}.png")):
+            raise RuntimeError(f"Could not save screenshot {name}")
         print("saved", name, flush=True)
 
     def pkg(self):
@@ -80,6 +97,23 @@ class Driver:
         self.steps.append((action, shot, wait))
 
     def run(self) -> None:
+        def finish_step(shot):
+            if self.backend.busy:
+                def when_idle():
+                    if not self.backend.busy:
+                        self.backend.busyChanged.disconnect(when_idle)
+                        QTimer.singleShot(100, lambda: finish_step(shot))
+                self.backend.busyChanged.connect(when_idle)
+                return
+            try:
+                if shot:
+                    self.shot(shot)
+            except Exception:
+                traceback.print_exc()
+                QGuiApplication.instance().exit(1)
+                return
+            next_step()
+
         def next_step():
             if not self.steps:
                 QGuiApplication.instance().exit(0)
@@ -89,7 +123,9 @@ class Driver:
                 action()
             except Exception:
                 traceback.print_exc()
-            QTimer.singleShot(wait, lambda: (self.shot(shot) if shot else None, next_step()))
+                QGuiApplication.instance().exit(1)
+                return
+            QTimer.singleShot(wait, lambda: finish_step(shot))
         QTimer.singleShot(1500, next_step)
         QTimer.singleShot(180000, lambda: QGuiApplication.instance().exit(2))
 
@@ -155,10 +191,23 @@ class Driver:
             self.tab("actionTabs", 1)
         self.add(add_note, "17-notizen")
         self.add(lambda: (self.ctl["searchCtl"].drawSample(), self.tab("actionTabs", 2)), "18-stichprobe")
-        self.add(lambda: (self.ctl["searchCtl"].simpleSearch("Test"), self.tab("actionTabs", 3)), "19-suche")
-        self.add(lambda: (self.ctl["searchCtl"].advancedSearch([{"kind": "dossier", "tag": "erscheinungsform",
-                                                                  "value": "digital"}]), self.tab("actionTabs", 3)),
-                 "20-erweiterte-suche")
+        self.add(lambda: (self.tab("actionTabs", 3), self.find("simpleSearchField").setProperty("text", "Test"),
+                  self.ctl["searchCtl"].simpleSearch("Test")), "19-suche")
+
+        def advanced_search():
+            search = self.ctl["searchCtl"]
+            self.tab("actionTabs", 3)
+            self.tab("searchModeTabs", 1)
+            kind = self.find("searchKind-0")
+            kind_index = next(index for index, value in enumerate(search.kinds, 1) if value["kind"] == "dossier")
+            kind.setProperty("currentIndex", kind_index)
+            QMetaObject.invokeMethod(kind, "activated", Q_ARG("int", kind_index))
+            field_index = next(index for index, value in enumerate(search.fields("dossier"))
+                               if value["tag"] == "erscheinungsform")
+            self.find("searchField-0").setProperty("currentIndex", field_index)
+            self.find("searchValue-0").setProperty("text", "digital")
+            search.advancedSearch([{"kind": "dossier", "tag": "erscheinungsform", "value": "digital"}])
+        self.add(advanced_search, "20-erweiterte-suche")
 
         self.add(lambda: self.call("preferencesDialog", "open"), "21-benutzervorgaben")
         self.add(lambda: self.call("preferencesDialog", "close"))
@@ -194,7 +243,8 @@ def render_report(pkg) -> None:
             painter.drawImage(x, 0, page)
             x += page.width() + 20
         painter.end()
-        combined.save(str(OUT / "24-bericht.png"))
+        if not combined.save(str(OUT / "24-bericht.png")):
+            raise RuntimeError("Could not save report screenshot")
         print("saved 24-bericht", flush=True)
 
 
@@ -213,6 +263,8 @@ def run() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     shutil.copytree(SAMPLE, WORK / SAMPLE.name)
     main.QQmlApplicationEngine = Engine
+    main.Backend = ScreenshotBackend
+    notes.default_author = lambda: "Dokumentation"
     sys.argv = [sys.argv[0]]
     try:
         return main.main()

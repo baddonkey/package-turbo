@@ -23,6 +23,14 @@ Rectangle {
         "ordner": ["O", "#fb8c00"]
     })
 
+    function linearChannel(value) {
+        return value <= 0.04045 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4)
+    }
+
+    readonly property real luminance: 0.2126 * linearChannel(color.r)
+                                     + 0.7152 * linearChannel(color.g)
+                                     + 0.0722 * linearChannel(color.b)
+
     implicitWidth: Math.max(22, label.implicitWidth + 8)
     implicitHeight: 16
     radius: 3
@@ -30,9 +38,10 @@ Rectangle {
 
     Text {
         id: label
+        objectName: "kindBadgeText"
         anchors.centerIn: parent
         text: (badge.spec[badge.kind] || ["?"])[0] + (badge.assigned ? "\u2197" : "")
-        color: "white"
+        color: badge.luminance > 0.179 ? "black" : "white"
         font.pixelSize: 10
         font.bold: true
     }

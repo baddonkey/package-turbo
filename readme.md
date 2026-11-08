@@ -92,3 +92,10 @@ untouched source copy.
 ## Sample SIP files
 
 Sample SIPs are available from [KOST/CECO](https://kost-ceco.ch/cms/ech-0160-archivische-ablieferungsschnittstelle.html).
+
+## Third-Party Packages
+* https://github.com/digital-preservation/droid
+
+## Icon resources
+
+See https://lucide.dev/icons

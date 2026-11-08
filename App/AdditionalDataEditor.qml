@@ -9,7 +9,9 @@ ColumnLayout {
     property int elementKey: 0
     property var items: []
     property bool editable: false
+    property bool fileProperties: false
     property var rows: []
+    objectName: fileProperties ? "filePropertiesEditor-" + elementKey : "additionalDataEditor-" + elementKey
 
     spacing: 4
 
@@ -18,31 +20,38 @@ ColumnLayout {
     function commit() {
         const key = elementKey
         const token = editor.packageToken
-        const values = rows.filter(row => row.name.trim() || row.value.trim()).map(row => ({ name: row.name, value: row.value }))
+        const values = rows.filter(row => row.name.trim() || (!fileProperties && row.value.trim()))
+                            .map(row => ({ name: row.name, value: row.value }))
         Qt.callLater(() => {
-            if (editor.packageToken === token)
-                editor.setAdditionalData(key, values)
+            if (editor.packageToken === token) {
+                if (fileProperties)
+                    editor.setFileProperties(key, values)
+                else
+                    editor.setAdditionalData(key, values)
+            }
         })
     }
 
     RowLayout {
         Label {
             Layout.preferredWidth: 230
-            text: qsTr("Zusatzdaten")
+            text: root.fileProperties ? qsTr("Dateieigenschaften") : qsTr("Zusatzdaten")
             font.bold: true
             ToolTip.visible: zusatzHover.hovered
             ToolTip.delay: 500
-            ToolTip.text: qsTr("Generisches Element für weitere beschreibende Metadaten als Merkmale (Name und Wert).")
+            ToolTip.text: root.fileProperties
+                          ? qsTr("Technische Dateieigenschaften als wiederholte Name-Wert-Paare.")
+                          : qsTr("Generisches Element für weitere beschreibende Metadaten als Merkmale (Name und Wert).")
             HoverHandler { id: zusatzHover }
         }
         Label {
             visible: root.rows.length === 0
-            text: qsTr("keine Merkmale")
+            text: root.fileProperties ? qsTr("keine Eigenschaften") : qsTr("keine Merkmale")
             color: palette.placeholderText
         }
         Item { Layout.fillWidth: true }
         Button {
-            text: qsTr("+ Merkmal")
+            text: root.fileProperties ? qsTr("+ Eigenschaft") : qsTr("+ Merkmal")
             flat: true
             visible: root.editable
             onClicked: root.rows = root.rows.concat([{ name: "", value: "" }])
@@ -89,7 +98,7 @@ ColumnLayout {
                 text: "\u2715"
                 visible: root.editable
                 ToolTip.visible: hovered
-                ToolTip.text: qsTr("Merkmal entfernen")
+                ToolTip.text: root.fileProperties ? qsTr("Eigenschaft entfernen") : qsTr("Merkmal entfernen")
                 onClicked: {
                     const rows = root.rows.slice()
                     rows.splice(merkmalRow.index, 1)

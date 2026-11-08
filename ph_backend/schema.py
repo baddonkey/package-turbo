@@ -274,6 +274,7 @@ FIELD_HELP = {
     "originalName": "Name im Ursprungssystem; bleibt beim Umbenennen oder Normalisieren erhalten.",
     "pruefalgorithmus": "Algorithmus der Prüfsumme (MD5, SHA-1, SHA-256, SHA-512).",
     "pruefsumme": "Prüfsumme des Dateiinhalts.",
+    "name": "Datei- und Ordnernamen: ASCII-Buchstaben/Ziffern sowie !#$%()+,-.=@[]{}~_ und Leerzeichen.",
     "zusatzDaten": "Generisches Element für weitere beschreibende Metadaten als Merkmale (Name und Wert).",
 }
 

@@ -52,6 +52,7 @@ ColumnLayout {
     HorizontalHeaderView {
         id: header
         Layout.fillWidth: true
+        Layout.preferredHeight: 38
         syncView: table
         clip: true
 
@@ -60,15 +61,20 @@ ColumnLayout {
             required property int index
             required property var display
 
-            implicitHeight: 26
+            implicitHeight: 38
             implicitWidth: 80
             color: palette.button
             border.color: palette.mid
 
             Label {
+                id: headingLabel
+                objectName: "tableHeadingLabel"
                 anchors.fill: parent
-                anchors.leftMargin: 6
+                anchors.margins: 4
                 verticalAlignment: Text.AlignVCenter
+                wrapMode: Text.WrapAnywhere
+                maximumLineCount: 2
+                font.pixelSize: 10
                 elide: Text.ElideRight
                 font.bold: true
                 text: (headerCell.display ?? "") + " " + (root.sortRevision >= 0 ? root.tableModel.sortIndicator(headerCell.index) : "")
@@ -90,7 +96,8 @@ ColumnLayout {
 
             ToolTip.visible: headerHover.hovered
             ToolTip.delay: 800
-            ToolTip.text: qsTr("Klick: sortieren / Richtung wechseln, Ctrl/Shift+Klick: Priorität ändern, Alt+Klick: Sortierung aufheben, Rechtsklick: Spalten")
+            ToolTip.text: headingLabel.truncated ? headerCell.display
+                           : qsTr("Klick: sortieren / Richtung wechseln, Ctrl/Shift+Klick: Priorität ändern, Alt+Klick: Sortierung aufheben, Rechtsklick: Spalten")
             HoverHandler { id: headerHover }
         }
     }
@@ -141,8 +148,8 @@ ColumnLayout {
                 text: cell.display ?? ""
                 font.bold: cell.column === 0 && cell.severity === "error"
                 color: cell.isSelected ? palette.highlightedText
-                     : (cell.column === 0 && cell.severity === "error") ? "#c62828"
-                     : (cell.column === 0 && cell.severity === "warning") ? "#ef6c00"
+                     : (cell.column === 0 && cell.severity === "error") ? palette.brightText
+                     : (cell.column === 0 && cell.severity === "warning") ? palette.link
                      : palette.text
             }
 

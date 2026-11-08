@@ -21,6 +21,8 @@ Pane {
     signal newNoteRequested(int key)
     signal showNotesRequested(int key)
     signal titleDoubleClicked()
+    signal newPackageRequested()
+    signal openPackageRequested()
 
     padding: 0
 
@@ -52,12 +54,14 @@ Pane {
         }
 
         Label {
-            Layout.preferredWidth: 230
+            Layout.preferredWidth: 220
+            Layout.minimumWidth: 150
+            Layout.maximumWidth: 270
             Layout.alignment: Qt.AlignTop
-            topPadding: 6
+            topPadding: 4
             text: fieldRow.field.label + (fieldRow.field.required ? " *" : "")
-            elide: Text.ElideRight
-            color: (fieldRow.field.required && !fieldRow.field.value) || fieldRow.field.error ? "#c62828" : palette.text
+            wrapMode: Text.WordWrap
+            color: (fieldRow.field.required && !fieldRow.field.value) || fieldRow.field.error ? palette.brightText : palette.text
             ToolTip.visible: labelHover.hovered && fieldRow.tip.length > 0
             ToolTip.delay: 500
             ToolTip.text: fieldRow.tip
@@ -92,7 +96,7 @@ Pane {
                 placeholderText: fieldRow.field.type === "timepoint" ? qsTr("JJJJ oder TT.MM.JJJJ, «ca.» für Schätzungen") : ""
                 background: Rectangle {
                     color: parent.readOnly ? palette.window : palette.base
-                    border.color: fieldRow.field.error ? "#c62828" : parent.activeFocus ? palette.highlight : palette.mid
+                    border.color: fieldRow.field.error ? palette.brightText : parent.activeFocus ? palette.highlight : palette.mid
                     radius: 2
                 }
                 onEditingFinished: {
@@ -111,6 +115,8 @@ Pane {
                 enabled: fieldRow.editable
                 currentIndex: Math.max(0, fieldRow.field.choices.indexOf(fieldRow.field.value))
                 displayText: currentText === "" ? qsTr("(keine Auswahl)") : currentText
+                ToolTip.visible: hovered && currentText.length > 0
+                ToolTip.text: currentText
                 onActivated: function (index) {
                     if (fieldRow.field.choices[index] !== fieldRow.field.value)
                         fieldRow.commitText(fieldRow.field.choices[index])
@@ -185,8 +191,18 @@ Pane {
                 model: statTable.rows
                 delegate: RowLayout {
                     required property var modelData
-                    Label { Layout.preferredWidth: 300; text: parent.modelData.label }
-                    Label { text: parent.modelData.value; font.bold: true }
+                    Label {
+                        Layout.preferredWidth: 240
+                        Layout.maximumWidth: 340
+                        wrapMode: Text.WordWrap
+                        text: parent.modelData.label
+                    }
+                    Label {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        text: parent.modelData.value
+                        font.bold: true
+                    }
                 }
             }
         }
@@ -200,17 +216,25 @@ Pane {
         Pane {
             Layout.fillWidth: true
             visible: editor.hasPackage
-            background: Rectangle { color: Qt.tint(palette.window, Qt.alpha(palette.highlight, 0.15)) }
+            background: Rectangle { objectName: "deliveryHeaderBackground"; color: Qt.tint(palette.window, Qt.alpha(palette.highlight, 0.15)) }
 
             GridLayout {
                 anchors.fill: parent
                 columns: 4
                 columnSpacing: 16
 
-                Label { text: qsTr("Ablieferungstyp:"); font.bold: true }
+                Label { objectName: "deliveryHeaderLabel"; text: qsTr("Ablieferungstyp:"); font.bold: true }
                 Label { text: editor.header.deliveryType ?? ""; Layout.fillWidth: true }
                 Label { text: qsTr("Aktenbildner:"); font.bold: true }
-                Label { text: editor.header.creator ?? ""; Layout.fillWidth: true; elide: Text.ElideRight }
+                Label {
+                    id: creatorSummary
+                    text: editor.header.creator ?? ""
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                    ToolTip.visible: creatorHover.hovered && truncated
+                    ToolTip.text: text
+                    HoverHandler { id: creatorHover }
+                }
                 Label { text: qsTr("Ablieferungsnummer:"); font.bold: true }
                 Label { text: (backend.dirty ? "*" : "") + (editor.header.deliveryNumber ?? "") }
                 Label { text: qsTr("Erscheinungsform:"); font.bold: true }
@@ -288,7 +312,7 @@ Pane {
                                 visible: section.modelData.noteCount > 0
                                 text: "N"
                                 font.bold: true
-                                color: "#ef6c00"
+                                color: palette.link
                             }
                             Label {
                                 visible: section.modelData.readOnly && !editor.readOnly
@@ -362,6 +386,14 @@ Pane {
                                 elementKey: section.modelData.key
                                 items: section.modelData.additionalData
                                 editable: !editor.readOnly && !section.modelData.readOnly
+                            }
+                            AdditionalDataEditor {
+                                Layout.fillWidth: true
+                                visible: section.modelData.canHaveFileProperties || section.modelData.fileProperties.length > 0
+                                elementKey: section.modelData.key
+                                items: section.modelData.fileProperties
+                                editable: !editor.readOnly && !section.modelData.readOnly
+                                fileProperties: true
                             }
                             ReferenceAttributesEditor {
                                 Layout.fillWidth: true
@@ -439,7 +471,16 @@ Pane {
                     Layout.fillWidth: true
                     Layout.margins: 12
                     visible: editor.currentTab === "validierung"
-                    title: qsTr("Durchgeführte Prüfungen")
+                    label: Label {
+                        text: qsTr("Durchgeführte Prüfungen")
+                        color: palette.text
+                        font.bold: true
+                    }
+                    background: Rectangle {
+                        color: palette.base
+                        border.color: palette.mid
+                        radius: 5
+                    }
 
                     ColumnLayout {
                         anchors.fill: parent
@@ -457,12 +498,13 @@ Pane {
                                 Label {
                                     Layout.fillWidth: true
                                     text: checkRow.modelData.check + (checkRow.modelData.fullOnly ? " *" : "")
-                                    color: checkRow.modelData.errors > 0 ? "#c62828" : palette.text
+                                    color: checkRow.modelData.errors > 0 ? palette.brightText : palette.text
                                     font.bold: checkRow.modelData.errors > 0
                                 }
                                 Label {
                                     Layout.preferredWidth: 160
                                     text: qsTr("%1 Fehler / %2 Warnungen").arg(checkRow.modelData.errors).arg(checkRow.modelData.warnings)
+                                    color: palette.text
                                 }
                                 Button {
                                     text: qsTr("Anzeigen")
@@ -485,11 +527,70 @@ Pane {
             Layout.fillWidth: true
             Layout.fillHeight: true
             visible: !editor.hasPackage
-            Label {
+
+            ColumnLayout {
                 anchors.centerIn: parent
-                text: qsTr("Kein Paket geöffnet.\nÖffnen oder erstellen Sie ein Paket oder ziehen Sie den SIP-Ordner hierher.")
-                horizontalAlignment: Text.AlignHCenter
-                color: palette.placeholderText
+                width: Math.min(parent.width - 48, 560)
+                spacing: 16
+
+                Image {
+                    source: "icons/app.svg"
+                    sourceSize.width: 64
+                    sourceSize.height: 64
+                    Layout.preferredWidth: 64
+                    Layout.preferredHeight: 64
+                    Layout.alignment: Qt.AlignHCenter
+                    fillMode: Image.PreserveAspectFit
+                }
+                Label {
+                    Layout.fillWidth: true
+                    text: qsTr("Package Turbo")
+                    horizontalAlignment: Text.AlignHCenter
+                    font.pixelSize: 26
+                    font.bold: true
+                    color: palette.text
+                }
+                Label {
+                    Layout.fillWidth: true
+                    text: qsTr("Kein SIP geöffnet")
+                    horizontalAlignment: Text.AlignHCenter
+                    font.pixelSize: 17
+                    font.bold: true
+                    color: palette.text
+                }
+                Label {
+                    Layout.fillWidth: true
+                    text: qsTr("Öffnen Sie ein entpacktes SIP-Verzeichnis oder erstellen Sie ein neues SIP.")
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    color: palette.placeholderText
+                }
+                RowLayout {
+                    Layout.alignment: Qt.AlignHCenter
+                    spacing: 10
+                    Button {
+                        text: qsTr("SIP öffnen")
+                        icon.source: "icons/folder-open.svg"
+                        icon.color: palette.buttonText
+                        display: AbstractButton.TextBesideIcon
+                        onClicked: root.openPackageRequested()
+                    }
+                    Button {
+                        text: qsTr("Neues SIP")
+                        icon.source: "icons/file-plus.svg"
+                        icon.color: palette.buttonText
+                        display: AbstractButton.TextBesideIcon
+                        highlighted: true
+                        onClicked: root.newPackageRequested()
+                    }
+                }
+                Label {
+                    Layout.fillWidth: true
+                    text: qsTr("Unterstützte Releases: eCH-0160 1.0, 1.1, 1.2 und 1.3")
+                    horizontalAlignment: Text.AlignHCenter
+                    font.pixelSize: 12
+                    color: palette.placeholderText
+                }
             }
         }
 

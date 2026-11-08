@@ -9,15 +9,48 @@ ApplicationWindow {
 
     width: 1500
     height: 950
+    minimumWidth: 980
+    minimumHeight: 680
     visible: true
     title: "Package Turbo" + (backend.hasPackage ? " \u2013 " + backend.packageName : "")
            + (backend.readOnly ? qsTr(" (schreibgeschützt)") : "") + (backend.dirty ? " *" : "")
+        readonly property bool darkMode: backend.themeMode === "dark"
+                            || (backend.themeMode === "system" && backend.systemTheme === "dark")
+        readonly property color secondaryTextColor: darkMode ? "#a9bcb6" : "#586c66"
+        readonly property color errorTextColor: darkMode ? "#ff9288" : "#b42318"
+        readonly property color warningTextColor: darkMode ? "#ffc078" : "#a75b16"
+        color: darkMode ? "#111a18" : "#f1f5f3"
+        palette.window: darkMode ? "#111a18" : "#f1f5f3"
+        palette.base: darkMode ? "#1a2724" : "#ffffff"
+        palette.alternateBase: darkMode ? "#202f2b" : "#f7faf8"
+        palette.active.text: darkMode ? "#e5eeeb" : "#1c2d2a"
+        palette.inactive.text: darkMode ? "#e5eeeb" : "#1c2d2a"
+        palette.active.windowText: darkMode ? "#e5eeeb" : "#1c2d2a"
+        palette.inactive.windowText: darkMode ? "#e5eeeb" : "#1c2d2a"
+        palette.disabled.text: darkMode ? "#82948e" : "#899791"
+        palette.disabled.windowText: darkMode ? "#82948e" : "#899791"
+        palette.disabled.buttonText: darkMode ? "#82948e" : "#899791"
+        palette.button: darkMode ? "#293a35" : "#e4eeea"
+        palette.active.buttonText: darkMode ? "#e6f1ed" : "#173e37"
+        palette.inactive.buttonText: darkMode ? "#e6f1ed" : "#173e37"
+        palette.highlight: darkMode ? "#39a99c" : "#16796f"
+        palette.highlightedText: darkMode ? "#10201d" : "#ffffff"
+        palette.brightText: errorTextColor
+        palette.mid: darkMode ? "#40544e" : "#c6d5d0"
+        palette.dark: darkMode ? "#0b1210" : "#71867f"
+        palette.light: darkMode ? "#344640" : "#fbfdfc"
+        palette.link: darkMode ? "#70d6c8" : "#126b63"
+        palette.placeholderText: darkMode ? "#a9bcb6" : "#586c66"
 
     property var pendingAction: null
     property bool closeConfirmed: false
     property string exportTarget: ""
     property string reportTarget: ""
+    property bool auditExportRedacted: false
+    property string auditExportMetsVersion: "2"
     property string maximized: ""
+    property var eventDetailData: ({})
+    property bool showRawEventDetails: false
 
     readonly property var defaultLayout: ({ leftWidth: 460, classificationHeight: 420, actionsHeight: 300 })
 
@@ -45,6 +78,19 @@ ApplicationWindow {
             return
         window.contentItem.forceActiveFocus()
         Qt.callLater(() => backend.save())
+    }
+
+    function openNewPackageDialog() {
+        if (backend.auditOperator.trim().length > 0) {
+            newPackageDialog.open()
+            return
+        }
+        inputDialog.ask(qsTr("Identität bestätigen"), qsTr("Erstellt durch"), "", name => {
+            if (!name.trim())
+                return
+            backend.auditOperator = name.trim()
+            newPackageDialog.open()
+        })
     }
 
     function proceedAfterSave() {
@@ -99,7 +145,7 @@ ApplicationWindow {
     }
 
     function confirm(text, action) {
-        confirmDialog.text = text
+        confirmDialog.message = text
         confirmDialog.action = action
         confirmDialog.open()
     }
@@ -107,6 +153,12 @@ ApplicationWindow {
     function textTarget() {
         const item = window.activeFocusItem
         return item && typeof item.cut === "function" && typeof item.paste === "function" ? item : null
+    }
+
+    function auditValueText(value) {
+        if (value === null || value === undefined)
+            return qsTr("(leer)")
+        return typeof value === "object" ? JSON.stringify(value) : String(value)
     }
 
     onClosing: function (close) {
@@ -143,8 +195,13 @@ ApplicationWindow {
     menuBar: MenuBar {
         Menu {
             id: packageMenu
+            objectName: "packageMenu"
             title: qsTr("&Paket")
-            Action { text: qsTr("Neues Paket erstellen..."); shortcut: StandardKey.New; onTriggered: guarded(() => newPackageDialog.open()) }
+            width: Math.min(window.width - 24, Math.max(implicitWidth, 300,
+                ...backend.recentPackages.map((path, index) => packageMenuFontMetrics.advanceWidth(
+                    (index + 1) + "  " + path.replace(/[\\/]+$/, "").split(/[\\/]/).pop()) + 24)))
+            FontMetrics { id: packageMenuFontMetrics; font: packageMenu.font }
+            Action { text: qsTr("Neues Paket erstellen..."); shortcut: StandardKey.New; onTriggered: guarded(() => window.openNewPackageDialog()) }
             Action { text: qsTr("Paket öffnen..."); shortcut: StandardKey.Open; onTriggered: guarded(() => { openFolderDialog.readOnly = false; openFolderDialog.open() }) }
             Action { text: qsTr("Paket schreibgeschützt öffnen..."); onTriggered: guarded(() => { openFolderDialog.readOnly = true; openFolderDialog.open() }) }
             Action { text: qsTr("metadata.xml öffnen..."); onTriggered: guarded(() => openMetadataDialog.open()) }
@@ -152,6 +209,11 @@ ApplicationWindow {
             Action { text: qsTr("Speichern"); shortcut: StandardKey.Save; enabled: backend.hasPackage && !backend.readOnly && !backend.busy; onTriggered: window.savePackage() }
             Action { text: qsTr("Paket zippen..."); enabled: backend.hasSip; onTriggered: zipDialog.open() }
             Action { text: qsTr("metadata.xml exportieren..."); enabled: backend.hasPackage; onTriggered: exportXmlDialog.open() }
+            Action {
+                text: qsTr("PREMIS/METS exportieren...")
+                enabled: backend.hasSip && backend.hasHistory && !backend.busy && !backend.dirty
+                onTriggered: auditExportDialog.open()
+            }
             MenuSeparator {}
             Menu {
                 id: reportsSubMenu
@@ -176,7 +238,17 @@ ApplicationWindow {
                 delegate: MenuItem {
                     required property var modelData
                     required property int index
-                    text: (index + 1) + "  " + modelData
+                    objectName: "recentPackage-" + index
+                    text: (index + 1) + "  " + modelData.replace(/[\\/]+$/, "").split(/[\\/]/).pop()
+                    contentItem: Label {
+                        text: parent.text
+                        font: parent.font
+                        color: parent.highlighted ? parent.palette.highlightedText : parent.palette.text
+                        wrapMode: Text.WrapAnywhere
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    ToolTip.visible: hovered
+                    ToolTip.text: modelData
                     onTriggered: { const path = modelData; guarded(() => backend.openRecent(path)) }
                 }
                 // Recent packages follow the separator after "Paket schliessen" (item 12).
@@ -288,80 +360,222 @@ ApplicationWindow {
     }
 
     header: ToolBar {
-        RowLayout {
-            anchors.fill: parent
-            spacing: 2
+        id: appHeader
+        padding: 10
+        implicitHeight: headerContent.implicitHeight + topPadding + bottomPadding
+        background: Rectangle {
+            color: palette.base
+            border.color: palette.mid
+            border.width: 1
+        }
 
-            ToolButton { text: qsTr("Neues Paket"); onClicked: guarded(() => newPackageDialog.open()) }
-            ToolButton { text: qsTr("Paket öffnen"); onClicked: guarded(() => { openFolderDialog.readOnly = false; openFolderDialog.open() }) }
-            ToolButton { objectName: "savePackageButton"; text: qsTr("Speichern"); enabled: backend.hasPackage && !backend.readOnly && !backend.busy; onClicked: window.savePackage() }
-            ToolButton {
-                objectName: "packageUndoButton"
-                text: "\u21B6"
-                implicitWidth: 32
-                implicitHeight: 32
-                font.pixelSize: 18
-                enabled: backend.canUndo
-                ToolTip.visible: hovered
-                ToolTip.text: qsTr("Paket rückgängig: %1").arg(backend.undoLabel)
-                onClicked: backend.undo()
-            }
-            ToolButton {
-                objectName: "packageRedoButton"
-                text: "\u21B7"
-                implicitWidth: 32
-                implicitHeight: 32
-                font.pixelSize: 18
-                enabled: backend.canRedo
-                ToolTip.visible: hovered
-                ToolTip.text: qsTr("Paket wiederholen: %1").arg(backend.redoLabel)
-                onClicked: backend.redo()
-            }
-            ToolButton { text: qsTr("Paket schliessen"); enabled: backend.hasPackage; onClicked: guarded(() => backend.closePackage()) }
-            ToolSeparator {}
-            ToolButton {
-                text: qsTr("Paket vollständig validieren")
-                enabled: backend.hasPackage && !backend.busy
-                onClicked: backend.validate(true)
-            }
-            ToolButton {
-                text: qsTr("Reports")
-                enabled: backend.hasPackage
-                onClicked: reportMenu.popup()
-                Menu {
-                    id: reportMenu
-                    Instantiator {
-                        model: packageCtl.reportTypes
-                        delegate: MenuItem {
-                            required property var modelData
-                            text: modelData.label + "..."
-                            onTriggered: { window.reportTarget = modelData.id; reportDialog.open() }
+        ColumnLayout {
+            id: headerContent
+            anchors.fill: parent
+            spacing: 8
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 12
+
+                Image {
+                    source: "icons/app.svg"
+                    sourceSize.width: 34
+                    sourceSize.height: 34
+                    Layout.preferredWidth: 34
+                    Layout.preferredHeight: 34
+                    fillMode: Image.PreserveAspectFit
+                }
+                ColumnLayout {
+                    spacing: 0
+                    Label { text: qsTr("Package Turbo"); font.pixelSize: 18; font.bold: true; color: palette.text }
+                    Label { text: qsTr("eCH-0160 SIP workspace"); font.pixelSize: 11; color: secondaryTextColor }
+                }
+                Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 34; color: palette.mid }
+                Label {
+                    id: packageIdentity
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 130
+                    text: backend.hasPackage ? backend.packageName : qsTr("Kein SIP geöffnet")
+                    font.pixelSize: 14
+                    font.bold: backend.hasPackage
+                    color: backend.hasPackage ? palette.text : palette.placeholderText
+                    elide: Text.ElideRight
+                    ToolTip.visible: identityHover.hovered && truncated
+                    ToolTip.text: text
+                    HoverHandler { id: identityHover }
+                }
+                Rectangle {
+                    visible: backend.readOnly
+                    radius: 9
+                    color: darkMode ? "#293956" : "#e8eefb"
+                    implicitWidth: readOnlyLabel.implicitWidth + 18
+                    implicitHeight: 26
+                    Label {
+                        id: readOnlyLabel
+                        anchors.centerIn: parent
+                        text: qsTr("Nur Lesen")
+                        color: darkMode ? "#dce8ff" : "#3d5f9a"
+                        font.pixelSize: 11
+                        font.bold: true
+                    }
+                }
+                Rectangle {
+                    visible: backend.dirty
+                    radius: 9
+                    color: darkMode ? "#49351f" : "#fff1dc"
+                    implicitWidth: dirtyLabel.implicitWidth + 18
+                    implicitHeight: 26
+                    Label {
+                        id: dirtyLabel
+                        anchors.centerIn: parent
+                        text: qsTr("Ungespeichert")
+                        color: darkMode ? "#ffd49a" : "#96501c"
+                        font.pixelSize: 11
+                        font.bold: true
+                    }
+                }
+                TextField {
+                    id: quickSearch
+                    Layout.preferredWidth: 250
+                    Layout.minimumWidth: 150
+                    rightPadding: 36
+                    placeholderText: qsTr("Metadaten suchen")
+                    enabled: backend.hasPackage
+                    selectByMouse: true
+                    onAccepted: {
+                        actionTabs.currentIndex = 3
+                        searchView.focusSimple(text)
+                    }
+                    ToolButton {
+                        anchors.right: parent.right
+                        anchors.rightMargin: 3
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 30
+                        height: 30
+                        padding: 0
+                        icon.source: "icons/search.svg"
+                        icon.color: palette.buttonText
+                        icon.width: 16
+                        icon.height: 16
+                        display: AbstractButton.IconOnly
+                        ToolTip.visible: hovered
+                        ToolTip.text: qsTr("Suche starten")
+                        onClicked: {
+                            actionTabs.currentIndex = 3
+                            searchView.focusSimple(quickSearch.text)
                         }
-                        onObjectAdded: function (index, object) { reportMenu.insertItem(index, object) }
-                        onObjectRemoved: function (index, object) { reportMenu.removeItem(object) }
                     }
                 }
             }
-            ToolButton {
-                text: qsTr("Neue Notiz")
-                enabled: backend.hasPackage && !backend.readOnly && editor.currentKey > 0
-                onClicked: window.askNote([editor.currentKey])
-            }
-            ToolButton { text: qsTr("Stichprobe"); enabled: backend.hasPackage; onClicked: { actionTabs.currentIndex = 2; searchCtl.drawSample() } }
-            ToolButton {
-                text: "\u21BA"
-                ToolTip.visible: hovered
-                ToolTip.text: qsTr("Perspektive zurücksetzen")
-                onClicked: window.applyLayout(window.defaultLayout)
-            }
-            Item { Layout.fillWidth: true }
-            TextField {
-                Layout.preferredWidth: 260
-                placeholderText: qsTr("Einfache Suche ...")
-                enabled: backend.hasPackage
-                onAccepted: {
-                    actionTabs.currentIndex = 3
-                    searchView.focusSimple(text)
+
+            Rectangle { Layout.fillWidth: true; height: 1; color: palette.mid }
+
+            Flow {
+                Layout.fillWidth: true
+                spacing: 6
+
+                ToolButton {
+                    text: qsTr("Neues Paket")
+                    icon.source: "icons/file-plus.svg"
+                    icon.color: palette.buttonText
+                    display: AbstractButton.TextBesideIcon
+                    onClicked: guarded(() => window.openNewPackageDialog())
+                }
+                ToolButton {
+                    text: qsTr("Öffnen")
+                    icon.source: "icons/folder-open.svg"
+                    icon.color: palette.buttonText
+                    display: AbstractButton.TextBesideIcon
+                    onClicked: guarded(() => { openFolderDialog.readOnly = false; openFolderDialog.open() })
+                }
+                ToolButton {
+                    objectName: "savePackageButton"
+                    text: qsTr("Speichern")
+                    icon.source: "icons/save.svg"
+                    icon.color: palette.buttonText
+                    display: AbstractButton.TextBesideIcon
+                    enabled: backend.hasPackage && !backend.readOnly && !backend.busy
+                    onClicked: window.savePackage()
+                }
+                ToolButton {
+                    objectName: "packageUndoButton"
+                    icon.source: "icons/undo-2.svg"
+                    icon.color: palette.buttonText
+                    enabled: backend.canUndo
+                    ToolTip.visible: hovered
+                    ToolTip.text: qsTr("Paket rückgängig: %1").arg(backend.undoLabel)
+                    onClicked: backend.undo()
+                }
+                ToolButton {
+                    objectName: "packageRedoButton"
+                    icon.source: "icons/redo-2.svg"
+                    icon.color: palette.buttonText
+                    enabled: backend.canRedo
+                    ToolTip.visible: hovered
+                    ToolTip.text: qsTr("Paket wiederholen: %1").arg(backend.redoLabel)
+                    onClicked: backend.redo()
+                }
+                ToolButton {
+                    text: qsTr("Schliessen")
+                    icon.source: "icons/x.svg"
+                    icon.color: palette.buttonText
+                    display: AbstractButton.TextBesideIcon
+                    enabled: backend.hasPackage
+                    onClicked: guarded(() => backend.closePackage())
+                }
+                ToolSeparator {}
+                ToolButton {
+                    text: qsTr("Vollständig validieren")
+                    icon.source: "icons/shield-check.svg"
+                    icon.color: palette.buttonText
+                    display: AbstractButton.TextBesideIcon
+                    enabled: backend.hasPackage && !backend.busy
+                    onClicked: backend.validate(true)
+                }
+                ToolButton {
+                    text: qsTr("Reports")
+                    icon.source: "icons/chart-column-increasing.svg"
+                    icon.color: palette.buttonText
+                    display: AbstractButton.TextBesideIcon
+                    enabled: backend.hasPackage
+                    onClicked: reportMenu.popup()
+                    Menu {
+                        id: reportMenu
+                        Instantiator {
+                            model: packageCtl.reportTypes
+                            delegate: MenuItem {
+                                required property var modelData
+                                text: modelData.label + "..."
+                                onTriggered: { window.reportTarget = modelData.id; reportDialog.open() }
+                            }
+                            onObjectAdded: function (index, object) { reportMenu.insertItem(index, object) }
+                            onObjectRemoved: function (index, object) { reportMenu.removeItem(object) }
+                        }
+                    }
+                }
+                ToolButton {
+                    text: qsTr("Neue Notiz")
+                    icon.source: "icons/sticky-note.svg"
+                    icon.color: palette.buttonText
+                    display: AbstractButton.TextBesideIcon
+                    enabled: backend.hasPackage && !backend.readOnly && editor.currentKey > 0
+                    onClicked: window.askNote([editor.currentKey])
+                }
+                ToolButton {
+                    text: qsTr("Stichprobe")
+                    icon.source: "icons/scan-search.svg"
+                    icon.color: palette.buttonText
+                    display: AbstractButton.TextBesideIcon
+                    enabled: backend.hasPackage
+                    onClicked: { actionTabs.currentIndex = 2; searchCtl.drawSample() }
+                }
+                ToolButton {
+                    icon.source: "icons/rotate-ccw.svg"
+                    icon.color: palette.buttonText
+                    ToolTip.visible: hovered
+                    ToolTip.text: qsTr("Perspektive zurücksetzen")
+                    onClicked: window.applyLayout(window.defaultLayout)
                 }
             }
         }
@@ -370,7 +584,16 @@ ApplicationWindow {
     footer: ToolBar {
         RowLayout {
             anchors.fill: parent
-            Label { text: backend.status; leftPadding: 8; Layout.fillWidth: true; elide: Text.ElideRight }
+            Label {
+                id: footerStatus
+                text: backend.status
+                leftPadding: 8
+                Layout.fillWidth: true
+                elide: Text.ElideRight
+                ToolTip.visible: footerStatusHover.hovered && truncated
+                ToolTip.text: text
+                HoverHandler { id: footerStatusHover }
+            }
             Label {
                 visible: structure.cutCount > 0
                 text: qsTr("%1 Objekt(e) ausgeschnitten").arg(structure.cutCount)
@@ -380,7 +603,7 @@ ApplicationWindow {
                 visible: backend.hasPackage
                 rightPadding: 8
                 text: qsTr("%1 Fehler, %2 Warnungen").arg(backend.errorCount).arg(backend.warningCount)
-                color: backend.errorCount > 0 ? "#c62828" : palette.text
+                color: backend.errorCount > 0 ? errorTextColor : palette.text
             }
         }
     }
@@ -425,8 +648,18 @@ ApplicationWindow {
                 TabBar {
                     id: navigatorTabs; objectName: "navigatorTabs"
                     Layout.fillWidth: true
-                    TabButton { text: qsTr("Dossier-Navigator") }
-                    TabButton { text: qsTr("Paket-Navigator") }
+                    TabButton {
+                        text: qsTr("Dossiers")
+                        ToolTip.visible: hovered
+                        ToolTip.text: qsTr("Dossier-Navigator")
+                    }
+                    TabButton {
+                        text: qsTr("Paketinhalt")
+                        icon.source: "icons/folder-open.svg"
+                        icon.color: palette.buttonText
+                        ToolTip.visible: hovered
+                        ToolTip.text: qsTr("Paket-Navigator")
+                    }
                 }
 
                 StackLayout {
@@ -438,7 +671,7 @@ ApplicationWindow {
                         id: dossierNavigator
                         title: qsTr("Dossiers")
                         treeModel: dossierModel
-                        columnRatios: [0.45, 0.18, 0.22, 0.15]
+                        columnRatios: [0.38, 0.18, 0.24, 0.20]
                         contextMenu: dossierMenu
                         onTitleDoubleClicked: window.toggleMaximized("lowerNav")
                     }
@@ -474,6 +707,8 @@ ApplicationWindow {
                 onNewNoteRequested: function (key) { window.askNote([key]) }
                 onShowNotesRequested: function (key) { window.showNotes(key) }
                 onTitleDoubleClicked: window.toggleMaximized("editor")
+                onNewPackageRequested: window.guarded(() => window.openNewPackageDialog())
+                onOpenPackageRequested: window.guarded(() => { openFolderDialog.readOnly = false; openFolderDialog.open() })
 
                 DropArea {
                     anchors.fill: parent
@@ -497,15 +732,92 @@ ApplicationWindow {
                 TabBar {
                     id: actionTabs; objectName: "actionTabs"
                     Layout.fillWidth: true
+                    contentItem: ListView {
+                        id: actionTabList
+                        objectName: "actionTabList"
+                        model: actionTabs.contentModel
+                        currentIndex: actionTabs.currentIndex
+                        orientation: ListView.Horizontal
+                        spacing: actionTabs.spacing
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        flickableDirection: Flickable.HorizontalFlick
+                        interactive: contentWidth > width
+                        highlightRangeMode: ListView.ApplyRange
+                        highlightMoveDuration: 0
+                        onCurrentIndexChanged: {
+                            if (currentIndex >= 0 && currentIndex < count)
+                                positionViewAtIndex(currentIndex, ListView.Contain)
+                        }
+                        ScrollBar.horizontal: actionTabScrollBar
+                    }
                     TabButton {
+                        width: actionPane.width < 760 ? 48 : Math.max(132, implicitWidth)
                         text: qsTr("Validierungshilfe") + (backend.errorCount > 0 ? "  \u2716 " + backend.errorCount : "  \u2714")
+                        icon.source: "icons/shield-check.svg"
+                        icon.color: palette.buttonText
+                        display: actionPane.width < 760 ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
+                        ToolTip.visible: hovered
+                        ToolTip.text: qsTr("Validierungshilfe: %1 Fehler, %2 Warnungen")
+                                      .arg(backend.errorCount).arg(backend.warningCount)
                         TapHandler { onDoubleTapped: window.toggleMaximized("actions") }
                     }
-                    TabButton { text: qsTr("Notiz") + (notesTable.total > 0 ? " (" + notesTable.total + ")" : "") }
-                    TabButton { text: qsTr("Stichprobe") }
-                    TabButton { text: qsTr("Suche") }
-                    TabButton { text: qsTr("Änderungen") + (changesTable.total > 0 ? " (" + changesTable.total + ")" : "") }
-                    TabButton { text: qsTr("Metadaten-Historie") + (historyTable.total > 0 ? " (" + historyTable.total + ")" : "") }
+                    TabButton {
+                        objectName: "notesActionTab"
+                        width: actionPane.width < 760 ? 48 : Math.max(112, implicitWidth)
+                        text: qsTr("Notiz") + (notesTable.total > 0 ? " (" + notesTable.total + ")" : "")
+                        icon.source: "icons/sticky-note.svg"
+                        icon.color: palette.buttonText
+                        display: actionPane.width < 760 ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
+                        ToolTip.visible: hovered
+                        ToolTip.text: qsTr("Notizen (%1)").arg(notesTable.total)
+                    }
+                    TabButton {
+                        objectName: "sampleActionTab"
+                        width: actionPane.width < 760 ? 48 : Math.max(118, implicitWidth)
+                        text: qsTr("Stichprobe")
+                        icon.source: "icons/scan-search.svg"
+                        icon.color: palette.buttonText
+                        display: actionPane.width < 760 ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
+                        ToolTip.visible: hovered
+                        ToolTip.text: qsTr("Stichprobe")
+                    }
+                    TabButton {
+                        width: actionPane.width < 760 ? 48 : Math.max(100, implicitWidth)
+                        text: qsTr("Suche")
+                        icon.source: "icons/search.svg"
+                        icon.color: palette.buttonText
+                        display: actionPane.width < 760 ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
+                        ToolTip.visible: hovered
+                        ToolTip.text: qsTr("Suche")
+                    }
+                    TabButton {
+                        width: actionPane.width < 760 ? 48 : Math.max(132, implicitWidth)
+                        text: qsTr("Änderungen") + (changesTable.total > 0 ? " (" + changesTable.total + ")" : "")
+                        icon.source: "icons/file-text.svg"
+                        icon.color: palette.buttonText
+                        display: actionPane.width < 760 ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
+                        ToolTip.visible: hovered
+                        ToolTip.text: qsTr("Änderungen (%1)").arg(changesTable.total)
+                    }
+                    TabButton {
+                        width: actionPane.width < 760 ? 48 : Math.max(172, implicitWidth)
+                        text: qsTr("Metadaten-Historie") + (historyTable.total > 0 ? " (" + historyTable.total + ")" : "")
+                        icon.source: "icons/clock.svg"
+                        icon.color: palette.buttonText
+                        display: actionPane.width < 760 ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
+                        ToolTip.visible: hovered
+                        ToolTip.text: qsTr("Metadaten-Historie (%1)").arg(historyTable.total)
+                    }
+                }
+
+                ScrollBar {
+                    id: actionTabScrollBar
+                    objectName: "actionTabScrollBar"
+                    Layout.fillWidth: true
+                    visible: actionTabList.contentWidth > actionTabList.width
+                    policy: ScrollBar.AlwaysOn
+                    orientation: Qt.Horizontal
                 }
 
                 StackLayout {
@@ -553,8 +865,12 @@ ApplicationWindow {
                     }
                     HistoryView {
                         onCleanupRequested: storageCleanupDialog.open()
+                        onExportRequested: auditExportDialog.open()
                         onDetailsRequested: function(text) {
                             eventDetails.text = text
+                            try { window.eventDetailData = JSON.parse(text) }
+                            catch (error) { window.eventDetailData = ({}) }
+                            window.showRawEventDetails = false
                             eventDialog.open()
                         }
                     }
@@ -567,6 +883,7 @@ ApplicationWindow {
 
     Menu {
         id: classificationMenu; objectName: "classificationMenu"
+        width: Math.min(window.width - 24, Math.max(implicitWidth, 450))
 
         readonly property int key: classificationNavigator.currentKey
         readonly property string kind: classificationNavigator.currentKind
@@ -652,6 +969,7 @@ ApplicationWindow {
 
     Menu {
         id: packageNavMenu; objectName: "packageNavMenu"
+        width: Math.min(window.width - 24, Math.max(implicitWidth, 450))
         readonly property int key: packageNavigator.currentKey
         readonly property string kind: packageNavigator.currentKind
         readonly property bool writable: backend.hasSip && !backend.readOnly
@@ -676,7 +994,7 @@ ApplicationWindow {
             }
         }
 
-        MenuItem { text: qsTr("Neuer Ordner..."); enabled: packageNavMenu.writable && packageNavMenu.kind === "ordner"; onTriggered: { const parent = packageNavMenu.key; inputDialog.ask(qsTr("Neuer Ordner"), qsTr("Name (erlaubt: A-Z a-z 0-9 _ . -)"), "", name => fileOps.newFolder(parent, name)) } }
+        MenuItem { text: qsTr("Neuer Ordner..."); enabled: packageNavMenu.writable && packageNavMenu.kind === "ordner"; onTriggered: { const parent = packageNavMenu.key; inputDialog.ask(qsTr("Neuer Ordner"), qsTr("Name (ASCII-Buchstaben, Ziffern, ! # $ % ( ) + , - . = @ [ ] { } ~ _ und Leerzeichen)"), "", name => fileOps.newFolder(parent, name)) } }
         MenuItem { text: qsTr("Dateien importieren..."); enabled: packageNavMenu.writable && packageNavMenu.kind === "ordner"; onTriggered: importFilesDialog.open() }
         MenuItem { text: qsTr("Ordner importieren..."); enabled: packageNavMenu.writable && packageNavMenu.kind === "ordner"; onTriggered: importFolderDialog.open() }
         MenuItem { text: qsTr("Umbenennen..."); enabled: packageNavMenu.writable && (packageNavMenu.kind === "ordner" || packageNavMenu.kind === "datei"); onTriggered: { const target = packageNavMenu.key; inputDialog.ask(qsTr("Umbenennen"), qsTr("Neuer Name (der Originalname bleibt erhalten)"), "", name => fileOps.rename(target, name)) } }
@@ -704,7 +1022,7 @@ ApplicationWindow {
         target: backend
         function onMessage(title, text) {
             messageDialog.title = title
-            messageDialog.text = text
+            messageDialog.message = text
             messageDialog.open()
         }
         function onPackageOpened() {
@@ -759,6 +1077,22 @@ ApplicationWindow {
         onAccepted: backend.exportMetadata(selectedFile)
     }
     FileDialog {
+        id: exportPremisDialog
+        objectName: "auditPremisFileDialog"
+        title: qsTr("PREMIS XML exportieren")
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "xml"
+        nameFilters: [qsTr("PREMIS XML (*.xml)")]
+        onAccepted: backend.exportPremis(selectedFile, window.auditExportRedacted)
+    }
+    FolderDialog {
+        id: exportAuditBundleDialog
+        objectName: "auditBundleFolderDialog"
+        title: qsTr("Ordner für SIP/METS/PREMIS-Export auswählen")
+        onAccepted: backend.exportAuditBundle(selectedFolder, window.auditExportRedacted,
+                                              window.auditExportMetsVersion)
+    }
+    FileDialog {
         id: exportTableDialog
         title: qsTr("Tabelle exportieren")
         fileMode: FileDialog.SaveFile
@@ -797,7 +1131,7 @@ ApplicationWindow {
             const found = fileOps.replacementCandidates(selectedFolder)
             if (found.length === 0) {
                 messageDialog.title = qsTr("Dateien ersetzen")
-                messageDialog.text = qsTr("Es wurden keine gleichnamigen Dateien gefunden.")
+                messageDialog.message = qsTr("Es wurden keine gleichnamigen Dateien gefunden.")
                 messageDialog.open()
                 return
             }
@@ -808,6 +1142,19 @@ ApplicationWindow {
     }
 
     InputDialog { id: inputDialog; objectName: "inputDialog" }
+    AuditExportDialog {
+        id: auditExportDialog
+        objectName: "auditExportDialog"
+        onPremisExportRequested: function(redactValues) {
+            window.auditExportRedacted = redactValues
+            exportPremisDialog.open()
+        }
+        onBundleExportRequested: function(redactValues, metsVersion) {
+            window.auditExportRedacted = redactValues
+            window.auditExportMetsVersion = metsVersion
+            exportAuditBundleDialog.open()
+        }
+    }
     NewPackageDialog { id: newPackageDialog; objectName: "newPackageDialog" }
     MassAssignDialog { id: massAssignDialog; objectName: "massAssignDialog" }
     MassEditDialog { id: massEditDialog; objectName: "massEditDialog" }
@@ -825,11 +1172,76 @@ ApplicationWindow {
         standardButtons: Dialog.Close
         ScrollView {
             anchors.fill: parent
-            TextArea {
-                id: eventDetails
-                readOnly: true
-                selectByMouse: true
-                wrapMode: TextEdit.Wrap
+            ColumnLayout {
+                width: eventDialog.availableWidth
+                spacing: 8
+
+                Label {
+                    Layout.fillWidth: true
+                    visible: (window.eventDetailData.changeSummary || []).length > 0
+                    text: qsTr("Änderungen")
+                    font.bold: true
+                }
+                Repeater {
+                    model: window.eventDetailData.changeSummary || []
+                    delegate: ColumnLayout {
+                        required property var modelData
+                        Layout.fillWidth: true
+                        spacing: 3
+                        Label {
+                            Layout.fillWidth: true
+                            text: modelData.field ? modelData.field + "  ·  " + modelData.path : modelData.path
+                            font.bold: true
+                            wrapMode: Text.WrapAnywhere
+                        }
+                        GridLayout {
+                            Layout.fillWidth: true
+                            columns: 2
+                            Label { text: qsTr("Vorher") }
+                            Label {
+                                Layout.fillWidth: true
+                                text: window.auditValueText(modelData.before)
+                                wrapMode: Text.WrapAnywhere
+                            }
+                            Label { text: qsTr("Nachher") }
+                            Label {
+                                Layout.fillWidth: true
+                                text: window.auditValueText(modelData.after)
+                                wrapMode: Text.WrapAnywhere
+                            }
+                        }
+                        Rectangle { Layout.fillWidth: true; height: 1; color: palette.mid }
+                    }
+                }
+                Label {
+                    Layout.fillWidth: true
+                    visible: (window.eventDetailData.deletedObjects || []).length > 0
+                    text: qsTr("Gelöschte Objekte")
+                    font.bold: true
+                }
+                Repeater {
+                    model: window.eventDetailData.deletedObjects || []
+                    delegate: Label {
+                        required property var modelData
+                        Layout.fillWidth: true
+                        text: modelData.kind + ": " + modelData.label + "  ·  " + modelData.path
+                              + (modelData.identifier ? "  ·  " + modelData.identifier : "")
+                        wrapMode: Text.WrapAnywhere
+                    }
+                }
+                ToolButton {
+                    text: window.showRawEventDetails ? qsTr("Rohdaten ausblenden") : qsTr("Rohdaten anzeigen")
+                    onClicked: window.showRawEventDetails = !window.showRawEventDetails
+                }
+                TextArea {
+                    id: eventDetails
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 240
+                    visible: window.showRawEventDetails
+                    readOnly: true
+                    selectByMouse: true
+                    wrapMode: TextEdit.Wrap
+                }
             }
         }
     }
@@ -847,50 +1259,51 @@ ApplicationWindow {
         onAccepted: structure.renumber(schemeBox.currentIndex === 0 ? "decimal" : "hundred")
     }
 
-    MessageDialog { id: messageDialog; buttons: MessageDialog.Ok }
+    MessageBox { id: messageDialog; objectName: "messageDialog"; buttonSet: "ok" }
 
-    MessageDialog {
+    MessageBox {
         id: confirmDialog
         property var action: null
         title: qsTr("Bestätigen")
-        buttons: MessageDialog.Ok | MessageDialog.Cancel
+        buttonSet: "okCancel"
         onAccepted: if (action) action()
     }
 
-    MessageDialog {
+    MessageBox {
         id: mergeDialog
         title: qsTr("Ordner zusammenführen")
-        buttons: MessageDialog.Yes | MessageDialog.No | MessageDialog.Cancel
-        onButtonClicked: function (button, role) {
-            if (button === MessageDialog.Yes)
+        buttonSet: "yesNoCancel"
+        onActionChosen: function (action) {
+            if (action === "yes")
                 fileOps.importUrls(packageNavMenu.importTarget, packageNavMenu.importUrls, true, true)
-            else if (button === MessageDialog.No)
+            else if (action === "no")
                 fileOps.importUrls(packageNavMenu.importTarget, packageNavMenu.importUrls, false, false)
         }
     }
 
-    MessageDialog {
+    MessageBox {
         id: invalidOnOpenDialog
         title: qsTr("Gültigkeitsprüfung fehlgeschlagen")
-        text: qsTr("Das Paket entspricht noch nicht allen Anforderungen. Die Details sind in der Validierungshilfe ersichtlich.")
-        buttons: MessageDialog.Ok
+        message: qsTr("Das Paket entspricht noch nicht allen Anforderungen. Die Details sind in der Validierungshilfe ersichtlich.")
+        buttonSet: "ok"
         onAccepted: fullValidationDialog.open()
     }
 
-    MessageDialog {
+    MessageBox {
         id: fullValidationDialog
+        objectName: "fullValidationDialog"
         title: qsTr("Paket vollständig validieren")
-        text: qsTr("Soll das Paket vollständig validiert werden?")
+        message: qsTr("Soll das Paket vollständig validiert werden?")
         informativeText: qsTr("Die Validierung kann bei grösseren Paketen einige Zeit in Anspruch nehmen.")
-        buttons: MessageDialog.Ok | MessageDialog.Cancel
+        buttonSet: "okCancel"
         onAccepted: backend.validate(true)
     }
 
-    MessageDialog {
+    MessageBox {
         id: validityDialog
         title: qsTr("Gültigkeitsprüfung fehlgeschlagen")
-        text: qsTr("Alle Fehler sind behoben. Soll das Paket gespeichert und erneut vollständig validiert werden?")
-        buttons: MessageDialog.Ok | MessageDialog.Cancel
+        message: qsTr("Alle Fehler sind behoben. Soll das Paket gespeichert und erneut vollständig validiert werden?")
+        buttonSet: "okCancel"
         onAccepted: {
             if (!backend.readOnly && !backend.save())
                 return
@@ -898,29 +1311,29 @@ ApplicationWindow {
         }
     }
 
-    MessageDialog {
+    MessageBox {
         id: unsavedDialog
         title: qsTr("Änderungen speichern")
-        text: qsTr("Die Metadaten wurden geändert. Sollen die Änderungen gespeichert werden?")
-        buttons: MessageDialog.Save | MessageDialog.Discard | MessageDialog.Cancel
-        onButtonClicked: function (button, role) {
-            if (button === MessageDialog.Save) {
+        message: qsTr("Die Metadaten wurden geändert. Sollen die Änderungen gespeichert werden?")
+        buttonSet: "saveDiscardCancel"
+        onActionChosen: function (action) {
+            if (action === "save") {
                 if (backend.save())
                     window.proceedAfterSave()
-            } else if (button === MessageDialog.Discard) {
+            } else if (action === "discard") {
                 if (backend.discardChanges())
                     window.proceedAfterSave()
-            } else {
+            } else if (action === "cancel") {
                 window.pendingAction = null
             }
         }
     }
 
-    MessageDialog {
+    MessageBox {
         id: errorsOnCloseDialog
         title: qsTr("Paket schliessen")
-        text: qsTr("Das Paket entspricht noch nicht vollständig den Anforderungen des Archivs. Trotzdem schliessen?")
-        buttons: MessageDialog.Ok | MessageDialog.Cancel
+        message: qsTr("Das Paket entspricht noch nicht vollständig den Anforderungen des Archivs. Trotzdem schliessen?")
+        buttonSet: "okCancel"
         onAccepted: window.runPending()
         onRejected: window.pendingAction = null
     }
@@ -943,6 +1356,9 @@ ApplicationWindow {
                 visible: backend.totalBytes > 0
                 text: qsTr("%1 / %2 Byte").arg(backend.completedBytes).arg(backend.totalBytes)
                 elide: Text.ElideRight
+                ToolTip.visible: byteCountHover.hovered && truncated
+                ToolTip.text: text
+                HoverHandler { id: byteCountHover }
             }
             Button { objectName: "cancelTaskButton"; text: qsTr("Abbrechen"); enabled: backend.canCancelTask; Layout.alignment: Qt.AlignHCenter; onClicked: backend.cancelTask() }
         }

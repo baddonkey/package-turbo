@@ -321,6 +321,20 @@ class MetadataEditor(QObject):
         if self.edit_operation is not None or old != new:
             self._emit_edit(el, "zusatzDaten", old, new)
 
+    @Slot(int, "QVariantList")
+    def setFileProperties(self, key: int, items) -> None:
+        el = self._editable_element(key)
+        if el is None or self._pkg.kind(el) != "datei":
+            return
+        pkg = self._pkg
+        old = _format_additional(pkg.file_properties(el))
+        values = [(str(item.get("name", "")), str(item.get("value", ""))) for item in items]
+        if not self._apply_edit(lambda package: package.set_file_properties(el, values)):
+            return
+        new = _format_additional(pkg.file_properties(el))
+        if self.edit_operation is not None or old != new:
+            self._emit_edit(el, "eigenschaft", old, new)
+
     # ---------------------------------------------------------------- internals
 
     def _emit_edit(self, el, tag: str, old: str, new: str) -> None:
@@ -415,6 +429,8 @@ class MetadataEditor(QObject):
             "references": pkg.reference_attributes(el),
             "canHaveAdditionalData": "zusatzDaten" in allowed,
             "additionalData": [{"name": n, "value": v} for n, v in pkg.additional_data(el)],
+            "canHaveFileProperties": kind == "datei" and "eigenschaft" in allowed,
+            "fileProperties": [{"name": n, "value": v} for n, v in pkg.file_properties(el)] if kind == "datei" else [],
             "readOnly": not editable,
             "primary": primary,
             "more": more,

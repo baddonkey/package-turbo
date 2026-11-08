@@ -307,6 +307,22 @@ class SipPackage:
             merkmal.set("name", name)
             merkmal.text = value
 
+    def file_properties(self, el) -> list[tuple[str, str]]:
+        """Technical name/value properties attached to a datei entry."""
+        return [(item.get("name", ""), (item.text or "").strip())
+                for item in self.children(el, "eigenschaft")]
+
+    def set_file_properties(self, el, items: list[tuple[str, str]]) -> None:
+        if localname(el) != "datei":
+            raise ValueError("File properties can only be edited on a datei entry.")
+        values = [(str(name).strip(), str(value).strip()) for name, value in items if str(name).strip()]
+        for item in self.children(el, "eigenschaft"):
+            el.remove(item)
+        for name, value in values:
+            item = self._insert_child(el, "eigenschaft")
+            item.set("name", name)
+            item.text = value
+
     @staticmethod
     def new_id() -> str:
         return "_" + uuid.uuid4().hex[:22]

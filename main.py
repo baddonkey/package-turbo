@@ -1,8 +1,9 @@
+import os
 import sys
 from pathlib import Path
 
 from PySide6.QtCore import QLocale, QSettings, QTranslator
-from PySide6.QtGui import QGuiApplication, QIcon
+from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
 
@@ -13,6 +14,7 @@ from ph_backend.controllers import (FileController, NoteController, PackageContr
 BASE_DIR = Path(__file__).resolve().parent
 APP_NAME = "Package Turbo"
 APP_VERSION = "0.1.0"
+_UI_FONT_ID = -1
 
 
 def _manual_paths() -> list[Path]:
@@ -20,6 +22,14 @@ def _manual_paths() -> list[Path]:
 
 
 def create_engine(backend: Backend) -> QQmlApplicationEngine:
+    global _UI_FONT_ID
+    app = QGuiApplication.instance()
+    if app is not None:
+        font_path = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts" / "segoeui.ttf"
+        if font_path.is_file() and _UI_FONT_ID < 0:
+            _UI_FONT_ID = QFontDatabase.addApplicationFont(str(font_path))
+        app.setFont(QFont("Segoe UI", 10))
+
     backend._software_version = APP_VERSION
     controllers = {
         "structure": StructureController(backend),

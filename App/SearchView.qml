@@ -56,6 +56,7 @@ ColumnLayout {
             RowLayout {
                 TabBar {
                     id: modeBar
+                    objectName: "searchModeTabs"
                     TabButton { text: qsTr("Einfache Suche"); width: implicitWidth }
                     TabButton { text: qsTr("Erweiterte Suche"); width: implicitWidth }
                 }
@@ -69,6 +70,7 @@ ColumnLayout {
                 visible: modeBar.currentIndex === 0
                 TextField {
                     id: simpleField
+                    objectName: "simpleSearchField"
                     Layout.fillWidth: true
                     placeholderText: qsTr("Suchbegriff (Gross-/Kleinschreibung wird nicht unterschieden)")
                     onAccepted: root.runSimple()
@@ -96,8 +98,11 @@ ColumnLayout {
                         Label { text: qsTr("Objekt") }
                         ComboBox {
                             id: kindBox
+                            objectName: "searchKind-" + criterionRow.index
                             Layout.preferredWidth: 200
                             model: [qsTr("(kein Kriterium)")].concat(searchCtl.kinds.map(k => k.label))
+                            ToolTip.visible: hovered && currentText.length > 0
+                            ToolTip.text: currentText
                             onActivated: function (index) {
                                 criterionRow.fields = index > 0 ? searchCtl.fields(searchCtl.kinds[index - 1].kind) : []
                                 fieldBox.currentIndex = criterionRow.fields.length > 0 ? 0 : -1
@@ -106,12 +111,16 @@ ColumnLayout {
                         Label { text: qsTr("Metadatum") }
                         ComboBox {
                             id: fieldBox
+                            objectName: "searchField-" + criterionRow.index
                             Layout.preferredWidth: 220
                             model: criterionRow.fields.map(f => f.label)
+                            ToolTip.visible: hovered && currentText.length > 0
+                            ToolTip.text: currentText
                         }
                         Label { text: qsTr("Wert") }
                         TextField {
                             id: valueField
+                            objectName: "searchValue-" + criterionRow.index
                             Layout.fillWidth: true
                             enabled: !emptyBox.checked
                             onAccepted: root.runAdvanced()
@@ -151,9 +160,10 @@ ColumnLayout {
         onRowActivated: function (row) { backend.reveal(searchTable.recordAt(row).key) }
     }
 
-    MessageDialog {
+    MessageBox {
         id: noHits
         title: qsTr("Keine Treffer")
-        buttons: MessageDialog.Ok
+        message: qsTr("Die Suche ergab keine Treffer.")
+        buttonSet: "ok"
     }
 }

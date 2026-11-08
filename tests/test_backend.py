@@ -28,6 +28,18 @@ def opened(backend, sip_dir):
     return backend
 
 
+def test_appearance_theme_setting_defaults_to_system_and_persists(backend):
+    assert backend.themeMode == "system"
+    assert backend.systemTheme in ("light", "dark")
+
+    for theme in ("light", "dark", "system"):
+        backend.themeMode = theme
+        assert backend.themeMode == theme
+
+    backend.themeMode = "invalid"
+    assert backend.themeMode == "system"
+
+
 def test_open_edit_save_cycle(opened, sip_dir):
     backend = opened
     assert backend.hasPackage and not backend.dirty
@@ -47,13 +59,79 @@ def test_open_edit_save_cycle(opened, sip_dir):
     assert "Neuer Dossiertitel" in (sip_dir / "header" / "metadata.xml").read_text(encoding="utf-8")
 
 
-@pytest.mark.parametrize("version,expected", [("1.2", "5.0"), ("1.3", "5.1")])
-def test_creation_controller_selects_version(backend, tmp_path, version, expected):
+@pytest.mark.parametrize(("version", "expected"), [("1.0", "4.0"), ("1.1", "4.1"),
+                                                    ("1.2", "5.0"), ("1.3", "5.1")])
+@pytest.mark.parametrize("delivery_type", ["GEVER", "FILES"])
+def test_creation_controller_selects_version_and_delivery_type(backend, tmp_path, version, expected, delivery_type):
+    from ph_backend import validation
+    from ph_backend.sip import SipPackage
+
     ctl = PackageController(backend, [])
     assert ctl.xsdVersions[0]["version"] == "1.3"
     assert ctl.createPackage(QUrl.fromLocalFile(str(tmp_path)), "SIP_20260104_Amt_Selected", "Amt",
-                             "GEVER", "", "Plan", QUrl(), version)
+                             delivery_type, "", "Plan", QUrl(), version)
     assert backend.package.root.get("schemaVersion") == expected
+    assert backend.package.delivery_type == delivery_type
+    expected_type = "ablieferungGeverSIP" if delivery_type == "GEVER" else "ablieferungFilesSIP"
+    assert backend.package.delivery.get("{http://www.w3.org/2001/XMLSchema-instance}type") == expected_type
+    assert not [issue for issue in validation.Validator(backend.package).run(full=True)
+                if issue["checkId"] == "schema"]
+    backend.package.save()
+    reopened = SipPackage.open_folder(backend.package.root_dir)
+    assert reopened.root.get("schemaVersion") == expected
+    assert reopened.delivery_type == delivery_type
+
+
+def test_package_creation_records_initial_audit_event(backend, tmp_path):
+    from pathlib import Path
+
+    controller = PackageController(backend, [])
+
+    assert controller.createPackage(QUrl.fromLocalFile(str(tmp_path)), "SIP_20261106_Amt_Audited",
+                                    "Amt", "GEVER", "", "Plan", QUrl(), "1.3")
+
+    events = backend.historyTable.records()
+    assert len(events) == 1
+    assert events[0]["eventType"] == "package creation"
+    detail = events[0]["detail"]
+    assert {key: detail[key] for key in ("packageName", "schemaVersion", "deliveryType")} == {
+        "packageName": "SIP_20261106_Amt_Audited",
+        "schemaVersion": "5.1",
+        "deliveryType": "GEVER",
+    }
+    assert detail["manifest"]["header/metadata.xml"]["sha256"]
+    assert detail["manifest"]["content"]["type"] == "directory"
+    assert (Path(backend.auditCompanion) / "journal.sqlite3").is_file()
+
+
+def test_package_creation_requires_operator_before_writing_sip(backend, tmp_path):
+    controller = PackageController(backend, [])
+    backend.auditOperator = ""
+    required = []
+    backend.auditOperatorRequired.connect(lambda: required.append(True))
+
+    assert not controller.createPackage(QUrl.fromLocalFile(str(tmp_path)), "SIP_20261106_Amt_NoOperator",
+                                         "Amt", "GEVER", "", "Plan", QUrl(), "1.3")
+
+    assert required
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_existing_package_registers_current_baseline_without_claiming_creation(opened):
+    from pathlib import Path
+    from ph_backend.audit import AuditJournal
+
+    pkg = opened.package
+    assert not Path(opened.auditCompanion).exists()
+    opened.editor.setField(pkg.key(next(pkg.iter_kind("dossier"))), "titel", "First audited change")
+    assert opened.save()
+
+    records = AuditJournal(Path(opened.auditCompanion) / "journal.sqlite3", read_only=True).records()
+    assert records[0]["payload"]["eventType"] == "package registration"
+    detail = records[0]["payload"]["detail"]
+    assert detail["note"] == "Current package state registered; earlier history is unknown."
+    assert detail["manifest"]["header/metadata.xml"]["sha256"]
+    assert records[-1]["payload"]["eventType"] == "package commit"
 
 
 def test_native_creation_dialog_renders_version_choices(backend, app, tmp_path, sip_dir, monkeypatch):
@@ -62,7 +140,7 @@ def test_native_creation_dialog_renders_version_choices(backend, app, tmp_path, 
     from pathlib import Path
     from PySide6.QtCore import QMetaObject, QObject, QPointF, QUrl, Qt
     from PySide6.QtGui import QFont, QFontDatabase, QRawFont, QKeySequence
-    from PySide6.QtQuick import QQuickWindow, QSGRendererInterface
+    from PySide6.QtQuick import QQuickItem, QQuickWindow, QSGRendererInterface
     from PySide6.QtQuickControls2 import QQuickStyle
     from PySide6.QtTest import QTest
     from PySide6.QtQml import QQmlComponent
@@ -91,6 +169,140 @@ def test_native_creation_dialog_renders_version_choices(backend, app, tmp_path, 
     window.setWidth(1280)
     window.setHeight(800)
     assert QTest.qWaitForWindowExposed(window, 2000)
+
+    def contrast(foreground, background):
+        def luminance(color):
+            channels = color.getRgbF()[:3]
+            linear = [value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
+                      for value in channels]
+            return sum(weight * value for weight, value in zip((0.2126, 0.7152, 0.0722), linear))
+
+        light, dark = sorted((luminance(foreground), luminance(background)), reverse=True)
+        return (light + 0.05) / (dark + 0.05)
+
+    def visual_items(root):
+        pending = [root]
+        while pending:
+            item = pending.pop()
+            yield item
+            pending.extend(item.childItems())
+
+    input_dialog = window.findChild(QObject, "inputDialog")
+    input_dialog.setProperty("title", "Neue Notiz")
+    input_dialog.setProperty("label", "Notiz zu 1 Objekt(en):")
+    input_dialog.setProperty("multiline", True)
+    badge_component = QQmlComponent(engine, QUrl.fromLocalFile(str(Path(__file__).resolve().parents[1] / "App" / "KindBadge.qml")))
+    badge = badge_component.create()
+    badge_text = badge.findChild(QQuickItem, "kindBadgeText")
+    for theme in ("light", "dark"):
+        backend.themeMode = theme
+        assert QMetaObject.invokeMethod(input_dialog, "open")
+        QTest.qWait(50)
+        background_color = input_dialog.property("background").property("color")
+        assert contrast(input_dialog.property("header").property("color"), background_color) >= 4.5
+        assert contrast(input_dialog.findChild(QQuickItem, "inputDialogPrompt").property("color"), background_color) >= 4.5
+        assert contrast(window.property("secondaryTextColor"), background_color) >= 4.5
+        assert window.grabWindow().save(str(tmp_path / ("input-dialog-" + theme + ".png")))
+        assert QMetaObject.invokeMethod(input_dialog, "close")
+        message_dialog = window.findChild(QObject, "messageDialog")
+        message_dialog.setProperty("title", "Hinweis")
+        message_dialog.setProperty("message", "Prüfung abgeschlossen")
+        assert QMetaObject.invokeMethod(message_dialog, "open")
+        QTest.qWait(30)
+        assert contrast(message_dialog.findChild(QQuickItem, "messageBoxTitle").property("color"),
+                message_dialog.property("header").property("color")) >= 4.5
+        assert contrast(message_dialog.findChild(QQuickItem, "messageBoxText").property("color"),
+                message_dialog.property("background").property("color")) >= 4.5
+        assert QMetaObject.invokeMethod(message_dialog, "close")
+        for dialog_name in ("newPackageDialog", "preferencesDialog", "massAssignDialog", "massEditDialog",
+                            "auditExportDialog", "storageCleanupDialog"):
+            checked_dialog = window.findChild(QObject, dialog_name)
+            assert QMetaObject.invokeMethod(checked_dialog, "open")
+            QTest.qWait(30)
+            dialog_background = checked_dialog.property("background").property("color")
+            assert contrast(checked_dialog.property("header").property("color"), dialog_background) >= 4.5
+            visible_labels = [item for item in checked_dialog.findChildren(QQuickItem)
+                              if item.metaObject().className().startswith("Label_")
+                              and item.isVisible() and item.isEnabled() and item.property("text")]
+            assert visible_labels
+            for label in visible_labels:
+                assert contrast(label.property("color"), dialog_background) >= 4.5, (dialog_name, theme, label.property("text"))
+            if dialog_name == "preferencesDialog":
+                checked_dialog.findChild(QObject, "auditOperatorField").setProperty("text", "Beispiel")
+                checked_dialog.findChild(QObject, "reporterNameField").setProperty("text", "Beispiel")
+                assert window.grabWindow().save(str(tmp_path / ("preferences-" + theme + ".png")))
+            assert QMetaObject.invokeMethod(checked_dialog, "close")
+        for kind in ("paket", "ablieferung", "provenienz", "ordnungssystem", "ordnungssystemposition",
+                     "dossier", "subdossier", "dokument", "vorgang", "aktivitaet", "mappe", "datei", "ordner", "unknown"):
+            badge.setProperty("kind", kind)
+            assert contrast(badge_text.property("color"), badge.property("color")) >= 4.5
+    backend.themeMode = "system"
+    tabs = window.findChild(QQuickItem, "actionTabs")
+    tab_list = window.findChild(QQuickItem, "actionTabList")
+    scrollbar = window.findChild(QQuickItem, "actionTabScrollBar")
+    window.setMinimumWidth(600)
+    for width, scroll_expected in ((1280, False), (980, False), (650, True), (1280, False)):
+        window.setWidth(width)
+        QTest.qWait(100)
+        assert scrollbar.isVisible() == scroll_expected
+        if scroll_expected:
+            assert tab_list.property("contentWidth") > tab_list.width()
+            assert scrollbar.mapToScene(QPointF(0, 0)).y() >= tabs.mapToScene(QPointF(0, tabs.height())).y()
+        for name, index in (("notesActionTab", 1), ("sampleActionTab", 2)):
+            tabs.setProperty("currentIndex", 0)
+            QTest.qWait(30)
+            button = window.findChild(QQuickItem, name)
+            point = button.mapToScene(QPointF(button.width() / 2, button.height() * 0.8)).toPoint()
+            QTest.mouseMove(window, point)
+            QTest.mouseClick(window, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, point)
+            assert tabs.property("currentIndex") == index
+            if scroll_expected:
+                tabs.setProperty("currentIndex", 0)
+                QTest.qWait(30)
+                start = scrollbar.mapToScene(QPointF(scrollbar.width() * 0.2, scrollbar.height() / 2)).toPoint()
+                end = scrollbar.mapToScene(QPointF(scrollbar.width() * 0.8, scrollbar.height() / 2)).toPoint()
+                QTest.mousePress(window, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
+                QTest.mouseMove(window, end, 50)
+                QTest.mouseRelease(window, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, end)
+                assert tab_list.property("contentX") > 0
+    window.setMinimumWidth(980)
+    package_menu = window.findChild(QObject, "packageMenu")
+    recent_name = "SIP_20260421_KOST_eCH1.3G_1a-3d-IO"
+    backend._settings.setValue("recentPackages", ["C:/packages/" + recent_name])
+    backend.recentChanged.emit()
+    assert QMetaObject.invokeMethod(package_menu, "open")
+    QTest.qWait(50)
+    recent_item = package_menu.findChild(QQuickItem, "recentPackage-0")
+    recent_label = recent_item.property("contentItem")
+    assert recent_item.property("text") == "1  " + recent_name
+    assert package_menu.property("width") > 200
+    assert recent_label.property("lineCount") == 1
+    assert recent_label.property("paintedWidth") <= recent_label.width()
+    long_name = "SIP_" + "longpackageidentifier" * 10
+    backend._settings.setValue("recentPackages", ["C:/packages/" + long_name])
+    backend.recentChanged.emit()
+    QTest.qWait(50)
+    recent_item = package_menu.findChild(QQuickItem, "recentPackage-0")
+    recent_label = recent_item.property("contentItem")
+    assert recent_item.property("text") == "1  " + long_name
+    assert package_menu.property("width") <= window.width() - 24
+    assert recent_label.property("lineCount") > 1
+    assert recent_label.property("paintedWidth") <= recent_label.width()
+    assert recent_item.height() >= recent_label.property("paintedHeight")
+    menu_items = package_menu.findChildren(QQuickItem)
+    open_item = next(item for item in menu_items if item.property("text") == "Paket öffnen..."
+                     and item.property("contentItem") is not None)
+    save_item = next(item for item in menu_items if item.property("text") == "Speichern"
+                     and item.property("contentItem") is not None)
+    assert open_item.isEnabled() and not save_item.isEnabled()
+    for theme, active_color, disabled_color in (("light", "#1c2d2a", "#899791"),
+                                                 ("dark", "#e5eeeb", "#82948e")):
+        backend.themeMode = theme
+        app.processEvents()
+        assert open_item.property("contentItem").property("color").name() == active_color
+        assert save_item.property("contentItem").property("color").name() == disabled_color
+    assert QMetaObject.invokeMethod(package_menu, "close")
+    backend.themeMode = "system"
     dialog = window.findChild(QObject, "newPackageDialog")
     assert QMetaObject.invokeMethod(dialog, "open")
     app.processEvents()
@@ -115,6 +327,33 @@ def test_native_creation_dialog_renders_version_choices(backend, app, tmp_path, 
     from ph_backend.sip import SipPackage
 
     backend.set_package(SipPackage.open_folder(sip_dir))
+    assert save_item.isEnabled()
+    for menu_name in ("classificationMenu", "packageNavMenu"):
+        navigator_menu = window.findChild(QObject, menu_name)
+        assert QMetaObject.invokeMethod(navigator_menu, "open")
+        QTest.qWait(50)
+        menu_entries = [item for item in navigator_menu.findChildren(QQuickItem)
+                        if item.property("text") and item.property("contentItem") is not None]
+        assert menu_entries
+        for entry in menu_entries:
+            assert entry.width() >= entry.implicitWidth(), (menu_name, entry.property("text"))
+        assert QMetaObject.invokeMethod(navigator_menu, "close")
+    tabs.setProperty("currentIndex", 0)
+    QTest.qWait(50)
+    for theme in ("light", "dark"):
+        backend.themeMode = theme
+        QTest.qWait(50)
+        delivery_label = window.findChild(QQuickItem, "deliveryHeaderLabel")
+        delivery_background = window.findChild(QQuickItem, "deliveryHeaderBackground")
+        assert contrast(delivery_label.property("color"), delivery_background.property("color")) >= 4.5
+        for object_name in ("tableHeadingLabel", "navigatorHeadingLabel"):
+            headings = [item for item in visual_items(window.contentItem())
+                        if item.objectName() == object_name and item.isVisible()]
+            assert headings, object_name
+            for heading in headings:
+                assert contrast(heading.property("color"), heading.parentItem().property("color")) >= 4.5
+        assert window.grabWindow().save(str(tmp_path / ("package-" + theme + ".png")))
+    backend.themeMode = "system"
     package = backend.package
     backend.editor.setField(package.key(next(package.iter_kind("dossier"))), "titel", "Audited native edit")
     assert backend.save()
@@ -123,6 +362,7 @@ def test_native_creation_dialog_renders_version_choices(backend, app, tmp_path, 
     app.processEvents()
     assert window.findChild(QObject, "historyView") is not None
     assert [row["eventType"] for row in backend.historyTable.records()] == [
+        "package registration",
         "package draft staging", "package draft staging", "package draft staging",
         "package commit preparation", "package operation", "metadata modification", "package commit"]
     assert "Audited native edit" in backend.historyDetails(5)
@@ -133,8 +373,17 @@ def test_native_creation_dialog_renders_version_choices(backend, app, tmp_path, 
     assert preferences.findChild(QObject, "workspaceLimit").property("value") == backend.workspaceLimitGiB
     assert preferences.findChild(QObject, "retentionCopies").property("value") == backend.retentionCopies
     assert preferences.findChild(QObject, "retentionAge").property("value") == backend.retentionAgeDays
-    assert QMetaObject.invokeMethod(preferences, "close")
+    theme_choices = preferences.findChild(QObject, "themeModeBox")
+    assert theme_choices.property("count") == 3
+    assert theme_choices.property("currentIndex") == 0
+    theme_choices.setProperty("currentIndex", 2)
+    assert QMetaObject.invokeMethod(preferences, "accept")
     app.processEvents()
+    assert backend.themeMode == "dark"
+    assert window.property("darkMode") is True
+    backend.themeMode = "system"
+    app.processEvents()
+    assert window.property("darkMode") == (backend.systemTheme == "dark")
     assert window.grabWindow().save(str(tmp_path / "metadata-history.png"))
     content = next(element for element in package.iter_kind("ordner") if package.text(element, "name") == "content")
     FileController(backend).newFolder(package.key(content), "NativeStaged")
@@ -349,6 +598,266 @@ def test_metadata_history_survives_save_close_reopen(opened, sip_dir):
     backend.closePackage()
     backend.openPackage(QUrl.fromLocalFile(str(sip_dir)), False)
     assert backend.historyTable.total == count
+
+
+def test_history_filters_preserve_records_and_reapply_after_refresh(opened):
+    pkg = opened.package
+    opened.editor.setField(pkg.key(next(pkg.iter_kind("dossier"))), "titel", "HistoryFilterToken")
+    assert opened.save()
+    all_records = opened.historyTable.records()
+
+    opened.setHistoryEventFilter("metadata modification")
+    opened.setHistoryOutcomeFilter("success")
+    opened.setHistorySearch("historyfiltertoken")
+    visible = opened.historyTable.visible_records()
+    assert len(visible) == 1
+    assert visible[0]["newValue"] == "HistoryFilterToken"
+    assert opened.historyTable.records() == all_records
+
+    opened._refresh_history()
+    assert len(opened.historyTable.visible_records()) == 1
+    opened.setHistorySearch("no matching event")
+    assert opened.historyTable.visibleCount() == 0
+    assert opened.historyTable.records() == all_records
+    opened.setHistorySearch("")
+    opened.setHistoryEventFilter("")
+    opened.setHistoryOutcomeFilter("")
+
+
+def test_history_details_summarize_deleted_metadata_and_files(opened):
+    import json
+    from pathlib import Path
+    from ph_backend.audit import AuditJournal
+
+    journal = AuditJournal(Path(opened.auditCompanion) / "journal.sqlite3")
+    event = journal.append("package operation", agent_identifier="operator:test", software_version="0.1.0",
+                           detail={"changes": [
+                               {"path": "/paket/ablieferung/dossier[2]/@id",
+                                "oldValue": "_dossier-2", "newValue": None},
+                               {"path": "/paket/ablieferung/dossier[2]/titel/text()",
+                                "oldValue": "Deleted dossier", "newValue": None},
+                           ], "fileChanges": [
+                               {"path": "content/deleted.pdf",
+                                "before": {"type": "file", "size": 12, "sha256": "a" * 64},
+                                "after": None},
+                           ]})
+    opened._refresh_history()
+    row = next(index for index, record in enumerate(opened.historyTable.records())
+               if record["eventIdentifier"] == event["payload"]["eventIdentifier"])
+
+    details = json.loads(opened.historyDetails(row))
+    assert details["deletedObjects"] == [
+        {"kind": "dossier", "identifier": "_dossier-2", "label": "Deleted dossier",
+         "path": "/paket/ablieferung/dossier[2]"},
+        {"kind": "file", "label": "deleted.pdf", "path": "content/deleted.pdf"},
+    ]
+    assert {change["path"]: (change["before"], change["after"])
+            for change in details["changeSummary"]} == {
+                "/paket/ablieferung/dossier[2]/@id": ("_dossier-2", None),
+                "/paket/ablieferung/dossier[2]/titel/text()": ("Deleted dossier", None),
+                "content/deleted.pdf": ({"type": "file", "size": 12, "sha256": "a" * 64}, None),
+            }
+
+
+def test_native_history_export_offers_privacy_and_mets_choices(backend, app, sip_dir, tmp_path):
+    from PySide6.QtCore import QMetaObject, QObject, QPointF, QUrl
+    from PySide6.QtQuick import QQuickWindow, QSGRendererInterface
+    from PySide6.QtQuickControls2 import QQuickStyle
+    from PySide6.QtTest import QTest
+    from main import create_engine
+
+    pkg = backend.openPackage(QUrl.fromLocalFile(str(sip_dir)), False)
+    pkg = backend.package
+    assert not backend.dirty
+    backend.editor.setField(pkg.key(next(pkg.iter_kind("dossier"))), "titel", "Export UI event")
+    assert backend.save()
+    QQuickStyle.setStyle("Fusion")
+    QQuickWindow.setGraphicsApi(QSGRendererInterface.GraphicsApi.Software)
+    engine = create_engine(backend)
+    window = engine.rootObjects()[0]
+    window.setWidth(1280)
+    window.setHeight(800)
+    window.show()
+    assert QTest.qWaitForWindowExposed(window, 2000)
+
+    tabs = window.findChild(QObject, "actionTabs")
+    tabs.setProperty("currentIndex", 5)
+    app.processEvents()
+    export_button = window.findChild(QObject, "preservationExportButton")
+    assert export_button is not None and export_button.property("enabled")
+    assert QMetaObject.invokeMethod(export_button, "clicked")
+    app.processEvents()
+
+    dialog = window.findChild(QObject, "auditExportDialog")
+    assert dialog is not None and dialog.property("visible")
+    full_choice = window.findChild(QObject, "fullPremisChoice")
+    redacted_choice = window.findChild(QObject, "redactedPremisChoice")
+    mets_version = window.findChild(QObject, "metsVersionChoice")
+    assert full_choice.property("checked")
+    assert not redacted_choice.property("checked")
+    assert mets_version.property("count") == 2
+    assert mets_version.property("currentIndex") == 0
+    for theme in ("light", "dark"):
+        backend.themeMode = theme
+        for width in (1280, 980):
+            window.setWidth(width)
+            QTest.qWait(50)
+            label = redacted_choice.property("contentItem")
+            assert label.property("lineCount") > 1
+            assert not label.property("truncated")
+            assert label.property("paintedWidth") <= label.width()
+            assert label.property("paintedHeight") <= label.height()
+            background = dialog.property("background")
+            left = background.mapToScene(QPointF(0, 0)).x()
+            right = left + background.width()
+            for name in ("fullPremisChoice", "redactedPremisChoice", "metsVersionChoice",
+                         "exportPremisOnlyButton", "exportSipMetsButton"):
+                control = window.findChild(QObject, name)
+                control_left = control.mapToScene(QPointF(0, 0)).x()
+                assert left <= control_left and control_left + control.width() <= right, (theme, width, name)
+            assert window.grabWindow().save(str(tmp_path / f"export-{theme}-{width}.png"))
+    backend.themeMode = "system"
+    redacted_choice.setProperty("checked", True)
+    mets_version.setProperty("currentIndex", 1)
+    assert redacted_choice.property("checked")
+    assert mets_version.property("currentText") == "METS 1.12.1"
+
+    premis_button = window.findChild(QObject, "exportPremisOnlyButton")
+    assert QMetaObject.invokeMethod(premis_button, "clicked")
+    app.processEvents()
+    premis_file_dialog = window.findChild(QObject, "auditPremisFileDialog")
+    assert window.property("auditExportRedacted")
+    assert premis_file_dialog.property("visible")
+    premis_file_dialog.close()
+    app.processEvents()
+
+    assert QMetaObject.invokeMethod(export_button, "clicked")
+    app.processEvents()
+    dialog = window.findChild(QObject, "auditExportDialog")
+    mets_version = window.findChild(QObject, "metsVersionChoice")
+    mets_version.setProperty("currentIndex", 1)
+    bundle_button = window.findChild(QObject, "exportSipMetsButton")
+    assert QMetaObject.invokeMethod(bundle_button, "clicked")
+    app.processEvents()
+    bundle_folder_dialog = window.findChild(QObject, "auditBundleFolderDialog")
+    assert window.property("auditExportMetsVersion") == "1.12.1"
+    assert bundle_folder_dialog.property("visible")
+    bundle_folder_dialog.close()
+    app.processEvents()
+    QMetaObject.invokeMethod(dialog, "close")
+    window.close()
+    engine.deleteLater()
+
+
+@pytest.mark.parametrize("redact_values", [False, True])
+def test_premis_export_ui_backend_respects_privacy_choice(opened, tmp_path, redact_values):
+    import xml.etree.ElementTree as ET
+    from pathlib import Path
+
+    pkg = opened.package
+    opened.editor.setField(pkg.key(next(pkg.iter_kind("dossier"))), "titel", "Private export detail")
+    assert opened.save()
+    journal_path = Path(opened.auditCompanion) / "journal.sqlite3"
+    from ph_backend.audit import AuditJournal
+
+    journal_before = AuditJournal(journal_path, read_only=True).records()
+    destination = tmp_path / ("redacted.xml" if redact_values else "full.xml")
+
+    opened.exportPremis(QUrl.fromLocalFile(str(destination)), redact_values)
+
+    xml = destination.read_bytes()
+    premis_root = ET.fromstring(xml)
+    assert (b"Private export detail" in xml) is not redact_values
+    assert len(premis_root.findall("{http://www.loc.gov/premis/v3}event")) == len(journal_before)
+    journal_after = AuditJournal(journal_path, read_only=True).records()
+    assert journal_after[-1]["payload"]["eventType"] == "preservation export"
+    assert journal_after[-1]["payload"]["detail"]["sourceSequence"] == len(journal_before)
+    assert journal_after[-1]["payload"]["detail"]["redacted"] is redact_values
+
+
+def test_premis_export_refuses_dirty_or_in_package_destination(opened, tmp_path):
+    pkg = opened.package
+    destination = tmp_path / "premis.xml"
+    opened.editor.setField(pkg.key(next(pkg.iter_kind("dossier"))), "titel", "Unsaved change")
+    opened.exportPremis(QUrl.fromLocalFile(str(destination)), False)
+    assert not destination.exists()
+    assert any("speichern" in text.lower() for _, text in opened.messages)
+
+    assert opened.save()
+    inside_sip = pkg.root_dir / "premis.xml"
+    opened.exportPremis(QUrl.fromLocalFile(str(inside_sip)), False)
+    assert not inside_sip.exists()
+    assert any("SIP" in text for _, text in opened.messages)
+
+
+@pytest.mark.parametrize(("redact_values", "mets_version"), [(False, "2"), (True, "1.12.1")])
+def test_audit_bundle_export_hashes_actual_zip_and_references_sidecars(
+        opened, tmp_path, redact_values, mets_version):
+    import hashlib
+    import xml.etree.ElementTree as ET
+    import zipfile
+    from pathlib import Path
+    from ph_backend.audit import AuditJournal
+
+    pkg = opened.package
+    opened.editor.setField(pkg.key(next(pkg.iter_kind("dossier"))), "titel", "Private bundle detail")
+    assert opened.save()
+    destination = tmp_path / "exports"
+    destination.mkdir()
+
+    opened.exportAuditBundle(QUrl.fromLocalFile(str(destination)), redact_values, mets_version)
+
+    bundle = destination / f"{pkg.name}.package-turbo-export"
+    archive = bundle / f"{pkg.name}.zip"
+    premis = bundle / f"{pkg.name}.premis.xml"
+    mets = ET.parse(bundle / f"{pkg.name}.mets.xml").getroot()
+    premis_root = ET.parse(premis).getroot()
+    archive_digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+    assert archive.is_file() and premis.is_file()
+    with zipfile.ZipFile(archive) as sip:
+        assert f"{pkg.name}/header/metadata.xml" in sip.namelist()
+    sip_file = next(element for element in mets.iter() if element.tag.endswith("}file") and element.get("ID") == "sip")
+    md_reference = next(element for element in mets.iter() if element.tag.endswith("}mdRef"))
+    location = next(element for element in mets.iter() if element.tag.endswith("}FLocat"))
+    assert sip_file.get("CHECKSUM") == archive_digest
+    assert md_reference.get("CHECKSUM") == hashlib.sha256(premis.read_bytes()).hexdigest()
+    assert location.get("LOCREF") == archive.name or location.get("{http://www.w3.org/1999/xlink}href") == archive.name
+    assert "has part" in [element.text for element in premis_root.iter()
+                           if element.tag.endswith("}relationshipSubType")]
+    assert (b"Private bundle detail" in premis.read_bytes()) is not redact_values
+    journal = AuditJournal(Path(opened.auditCompanion) / "journal.sqlite3", read_only=True)
+    events = journal.records()
+    export_event = events[-1]["payload"]
+    assert export_event["eventType"] == "preservation export"
+    assert export_event["detail"]["sourceSequence"] == len(events) - 1
+    assert export_event["detail"]["sipSha256"] == archive_digest
+    assert export_event["detail"]["metsVersion"] == mets_version
+    assert export_event["detail"]["redacted"] is redact_values
+    assert len(premis_root.findall("{http://www.loc.gov/premis/v3}event")) == len(events) - 1
+
+
+def test_premis_export_links_deleted_sip_entity_by_stable_id(opened):
+    import hashlib
+    from pathlib import Path
+    from lxml import etree
+    from ph_backend.audit import AuditJournal, PREMIS_NS
+
+    pkg = opened.package
+    dossier = list(pkg.iter_kind("dossier"))[-1]
+    identifier = dossier.get("id")
+    opened.stage_file_operation(lambda package: package.remove(dossier))
+    assert opened.save()
+
+    journal = AuditJournal(Path(opened.auditCompanion) / "journal.sqlite3", read_only=True)
+    root = etree.fromstring(journal.premis_xml())
+    expected = "urn:package-turbo:xml:" + hashlib.sha256(
+        (journal.package_identifier + "\0xml\0id:" + identifier).encode("utf-8")).hexdigest()
+    namespaces = {"p": PREMIS_NS}
+    object_ids = root.xpath("p:object/p:objectIdentifier/p:objectIdentifierValue/text()", namespaces=namespaces)
+    source_links = root.xpath("p:event/p:linkingObjectIdentifier[p:linkingObjectRole='source']"
+                              "/p:linkingObjectIdentifierValue/text()", namespaces=namespaces)
+    assert expected in object_ids and expected in source_links
+    assert b"/dossier[" not in journal.premis_xml(redact_values=True)
 
 
 def test_missing_audit_operator_blocks_edit_without_creating_companion(opened):
@@ -830,6 +1339,47 @@ def test_validation_uses_isolated_xml_and_maps_issue_keys(opened):
     assert all(not issue["key"] or pkg.element(issue["key"]) is not None for issue in issues)
 
 
+def test_validation_event_records_only_summary_and_snapshot_hash(opened):
+    pkg = opened.package
+    opened.editor.setField(pkg.key(next(pkg.iter_kind("dossier"))), "titel", "Sensitive validation title")
+    assert opened.save()
+
+    opened.validate(True)
+    worker = opened._worker
+    worker.wait()
+    QGuiApplication.processEvents()
+
+    event = next(row for row in opened.historyTable.records() if row["eventType"] == "validation")
+    detail = event["detail"]
+    assert detail["scope"] == "package-validation" and detail["mode"] == "full"
+    assert len(detail["metadataSha256"]) == 64
+    assert isinstance(detail["issueCounts"], dict)
+    assert "Sensitive validation title" not in str(detail)
+
+
+def test_read_only_validation_is_recorded_only_in_external_companion(opened, sip_dir):
+    from pathlib import Path
+
+    pkg = opened.package
+    opened.editor.setField(pkg.key(next(pkg.iter_kind("dossier"))), "titel", "Saved before validation")
+    assert opened.save()
+    metadata_before = pkg.metadata_path.read_bytes()
+    companion = Path(opened.auditCompanion)
+    opened.closePackage()
+    opened.openPackage(QUrl.fromLocalFile(str(sip_dir)), True)
+    journal_path = companion / "journal.sqlite3"
+    journal_before = journal_path.read_bytes()
+
+    opened.validate(True)
+    worker = opened._worker
+    worker.wait()
+    QGuiApplication.processEvents()
+
+    assert (sip_dir / "header" / "metadata.xml").read_bytes() == metadata_before
+    assert journal_path.read_bytes() != journal_before
+    assert any(row["eventType"] == "validation" for row in opened.historyTable.records())
+
+
 def test_validation_hash_cancellation_does_not_publish_success(opened, monkeypatch):
     import threading
     from PySide6.QtCore import QEventLoop, QTimer
@@ -1100,7 +1650,7 @@ def test_failed_initial_file_operation_does_not_block_metadata_save(opened):
     dossier = next(pkg.iter_kind("dossier"))
     opened.editor.setField(pkg.key(dossier), "titel", "Keep earlier edit")
     content = next(element for element in pkg.iter_kind("ordner") if pkg.text(element, "name") == "content")
-    FileController(opened).newFolder(pkg.key(content), "not allowed")
+    FileController(opened).newFolder(pkg.key(content), "not&allowed")
     assert opened.messages
     assert opened.save()
     assert "Keep earlier edit" in pkg.metadata_path.read_text(encoding="utf-8")

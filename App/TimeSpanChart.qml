@@ -30,7 +30,15 @@ Item {
                 Layout.fillWidth: true
                 spacing: 8
 
-                Label { Layout.preferredWidth: root.labelWidth; text: barRow.modelData.label }
+                Label {
+                    id: spanLabel
+                    Layout.preferredWidth: root.labelWidth
+                    text: barRow.modelData.label
+                    elide: Text.ElideRight
+                    ToolTip.visible: spanLabelHover.hovered && truncated
+                    ToolTip.text: text
+                    HoverHandler { id: spanLabelHover }
+                }
 
                 Item {
                     id: track
@@ -58,7 +66,16 @@ Item {
                     }
                 }
 
-                Label { Layout.preferredWidth: 150; text: barRow.modelData.text; color: palette.placeholderText }
+                Label {
+                    id: spanValueLabel
+                    Layout.preferredWidth: 150
+                    text: barRow.modelData.text
+                    color: palette.placeholderText
+                    elide: Text.ElideRight
+                    ToolTip.visible: spanValueHover.hovered && truncated
+                    ToolTip.text: text
+                    HoverHandler { id: spanValueHover }
+                }
             }
         }
 
