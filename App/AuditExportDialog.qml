@@ -28,6 +28,8 @@ Dialog {
 
         RadioButton {
             objectName: "fullPremisChoice"
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
             ButtonGroup.group: privacyGroup
             checked: true
             text: qsTr("Vollständig: Ereignisdetails einschliessen")
@@ -36,8 +38,19 @@ Dialog {
         RadioButton {
             id: redactedChoice
             objectName: "redactedPremisChoice"
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
             ButtonGroup.group: privacyGroup
             text: qsTr("Redigiert: Ereignisdetails auslassen; Bedienerkennung und Prüfsummen bleiben sichtbar")
+            contentItem: Text {
+                leftPadding: redactedChoice.indicator && !redactedChoice.mirrored ? redactedChoice.indicator.width + redactedChoice.spacing : 0
+                rightPadding: redactedChoice.indicator && redactedChoice.mirrored ? redactedChoice.indicator.width + redactedChoice.spacing : 0
+                text: redactedChoice.text
+                font: redactedChoice.font
+                color: redactedChoice.palette.windowText
+                wrapMode: Text.Wrap
+                verticalAlignment: Text.AlignVCenter
+            }
         }
 
         RowLayout {

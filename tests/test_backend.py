@@ -328,6 +328,16 @@ def test_native_creation_dialog_renders_version_choices(backend, app, tmp_path, 
 
     backend.set_package(SipPackage.open_folder(sip_dir))
     assert save_item.isEnabled()
+    for menu_name in ("classificationMenu", "packageNavMenu"):
+        navigator_menu = window.findChild(QObject, menu_name)
+        assert QMetaObject.invokeMethod(navigator_menu, "open")
+        QTest.qWait(50)
+        menu_entries = [item for item in navigator_menu.findChildren(QQuickItem)
+                        if item.property("text") and item.property("contentItem") is not None]
+        assert menu_entries
+        for entry in menu_entries:
+            assert entry.width() >= entry.implicitWidth(), (menu_name, entry.property("text"))
+        assert QMetaObject.invokeMethod(navigator_menu, "close")
     tabs.setProperty("currentIndex", 0)
     QTest.qWait(50)
     for theme in ("light", "dark"):
@@ -649,8 +659,8 @@ def test_history_details_summarize_deleted_metadata_and_files(opened):
             }
 
 
-def test_native_history_export_offers_privacy_and_mets_choices(backend, app, sip_dir):
-    from PySide6.QtCore import QMetaObject, QObject, QUrl
+def test_native_history_export_offers_privacy_and_mets_choices(backend, app, sip_dir, tmp_path):
+    from PySide6.QtCore import QMetaObject, QObject, QPointF, QUrl
     from PySide6.QtQuick import QQuickWindow, QSGRendererInterface
     from PySide6.QtQuickControls2 import QQuickStyle
     from PySide6.QtTest import QTest
@@ -687,6 +697,26 @@ def test_native_history_export_offers_privacy_and_mets_choices(backend, app, sip
     assert not redacted_choice.property("checked")
     assert mets_version.property("count") == 2
     assert mets_version.property("currentIndex") == 0
+    for theme in ("light", "dark"):
+        backend.themeMode = theme
+        for width in (1280, 980):
+            window.setWidth(width)
+            QTest.qWait(50)
+            label = redacted_choice.property("contentItem")
+            assert label.property("lineCount") > 1
+            assert not label.property("truncated")
+            assert label.property("paintedWidth") <= label.width()
+            assert label.property("paintedHeight") <= label.height()
+            background = dialog.property("background")
+            left = background.mapToScene(QPointF(0, 0)).x()
+            right = left + background.width()
+            for name in ("fullPremisChoice", "redactedPremisChoice", "metsVersionChoice",
+                         "exportPremisOnlyButton", "exportSipMetsButton"):
+                control = window.findChild(QObject, name)
+                control_left = control.mapToScene(QPointF(0, 0)).x()
+                assert left <= control_left and control_left + control.width() <= right, (theme, width, name)
+            assert window.grabWindow().save(str(tmp_path / f"export-{theme}-{width}.png"))
+    backend.themeMode = "system"
     redacted_choice.setProperty("checked", True)
     mets_version.setProperty("currentIndex", 1)
     assert redacted_choice.property("checked")

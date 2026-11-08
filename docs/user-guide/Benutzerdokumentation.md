@@ -1,6 +1,6 @@
 # Package Turbo – Benutzerdokumentation
 
-Package Turbo ist ein eigenständiger Desktop-Arbeitsbereich für digitale Ablieferungen nach eCH-0160 mit Python, PySide6 und QML. Diese Dokumentation beschreibt die Arbeitsabläufe und den aktuellen Funktionsumfang von Package Turbo. Die meisten Abbildungen zeigen das KOST-CECO-Testpaket `SIP_20220328_KOST_eCH1.2G_1a-3d-IO`; einzelne Abbildungen stammen aus früheren Oberflächenständen und können von der aktuellen Darstellung abweichen.
+Package Turbo ist ein eigenständiger Desktop-Arbeitsbereich für digitale Ablieferungen nach eCH-0160 mit Python, PySide6 und QML. Diese Dokumentation beschreibt die Arbeitsabläufe und den aktuellen Funktionsumfang von Package Turbo. Die meisten Abbildungen zeigen eine Arbeitskopie des KOST-CECO-Testpakets `SIP_20220328_KOST_eCH1.2G_1a-3d-IO`.
 
 Package Turbo befindet sich in Entwicklung. Verwenden Sie für die Bearbeitung eine Arbeitskopie und bewahren Sie die ursprüngliche Ablieferung unverändert auf.
 

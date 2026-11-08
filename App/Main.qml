@@ -883,6 +883,7 @@ ApplicationWindow {
 
     Menu {
         id: classificationMenu; objectName: "classificationMenu"
+        width: Math.min(window.width - 24, Math.max(implicitWidth, 450))
 
         readonly property int key: classificationNavigator.currentKey
         readonly property string kind: classificationNavigator.currentKind
@@ -968,6 +969,7 @@ ApplicationWindow {
 
     Menu {
         id: packageNavMenu; objectName: "packageNavMenu"
+        width: Math.min(window.width - 24, Math.max(implicitWidth, 450))
         readonly property int key: packageNavigator.currentKey
         readonly property string kind: packageNavigator.currentKind
         readonly property bool writable: backend.hasSip && !backend.readOnly
