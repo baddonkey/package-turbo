@@ -11,6 +11,7 @@ SearchView 254.0 SearchView.qml
 TimeSpanChart 254.0 TimeSpanChart.qml
 EditMenu 254.0 EditMenu.qml
 InputDialog 254.0 InputDialog.qml
+MessageBox 254.0 MessageBox.qml
 NewPackageDialog 254.0 NewPackageDialog.qml
 MassAssignDialog 254.0 MassAssignDialog.qml
 MassEditDialog 254.0 MassEditDialog.qml

@@ -1,6 +1,6 @@
 # Package Turbo – Benutzerdokumentation
 
-Package Turbo ist ein eigenständiger Desktop-Arbeitsbereich für digitale Ablieferungen nach eCH-0160 mit Python, PySide6 und QML. Diese Dokumentation beschreibt die Arbeitsabläufe und den aktuellen Funktionsumfang von Package Turbo. Die Abbildungen zeigen das KOST-CECO-Testpaket `SIP_20220328_KOST_eCH1.2G_1a-3d-IO` in Package Turbo und werden mit `tools/doc_screenshots.py` erstellt.
+Package Turbo ist ein eigenständiger Desktop-Arbeitsbereich für digitale Ablieferungen nach eCH-0160 mit Python, PySide6 und QML. Diese Dokumentation beschreibt die Arbeitsabläufe und den aktuellen Funktionsumfang von Package Turbo. Die meisten Abbildungen zeigen das KOST-CECO-Testpaket `SIP_20220328_KOST_eCH1.2G_1a-3d-IO`; einzelne Abbildungen stammen aus früheren Oberflächenständen und können von der aktuellen Darstellung abweichen.
 
 Package Turbo befindet sich in Entwicklung. Verwenden Sie für die Bearbeitung eine Arbeitskopie und bewahren Sie die ursprüngliche Ablieferung unverändert auf.
 
@@ -42,7 +42,7 @@ Grundlage sind die Spezifikation und die XML-Schemas von eCH-0160. Zusätzlich k
 
 Package Turbo unterstützt die Erstellung, Qualitätsprüfung und Sichtung von digitalen Ablieferungen gemäss dem Standard eCH-0160 – Archivische Ablieferungsschnittstelle. Die Metadaten des Pakets (`header/metadata.xml`) können gesichtet, erstellt und bearbeitet werden; die Primärdaten (Dateien im Ordner `content`) lassen sich direkt öffnen. Zusätzlich stehen Funktionen zur Prüfung der Metadaten, zur Suche, für Notizen und Stichproben zur Verfügung.
 
-Package Turbo öffnet und prüft Pakete der Standardversionen eCH-0160 v1.0, v1.1, v1.2 und v1.3 (XML-Namensraum `http://bar.admin.ch/arelda/v4`). Die Prüfung erfolgt gegen die im Paket unter `header/xsd` mitgelieferten XML-Schemas. Bei der Erstellung stehen alle vier Versionen zur Auswahl; die Voreinstellung ist v1.3 (Schema-Version 5.1). Das Speichern ändert die Standardversion eines vorhandenen Pakets nicht. Unbekannte Versionen werden schreibgeschützt geöffnet.
+Package Turbo öffnet und prüft Pakete der Standardversionen eCH-0160 v1.0, v1.1, v1.2 und v1.3 (XML-Namensraum `http://bar.admin.ch/arelda/v4`). Die Prüfung berücksichtigt die im Paket unter `header/xsd` mitgelieferten XML-Schemas und zusätzlich das mit Package Turbo ausgelieferte Schema der deklarierten Version. Fehlende oder nicht ladbare lokale Schemas werden gemeldet. Bei der Erstellung stehen alle vier Versionen zur Auswahl; die Voreinstellung ist v1.3 (Schema-Version 5.1). Das Speichern ändert die Standardversion eines vorhandenen Pakets nicht. Unbekannte Versionen werden schreibgeschützt geöffnet.
 
 Die Unterstützung der Paket-Schemas umfasst noch nicht für jedes Metadatum einen vollständigen Editorablauf. Beachten Sie die nachfolgend beschriebenen Einschränkungen.
 
@@ -76,7 +76,7 @@ Befehle in Menüs, Toolbar und Dialogen sind *kursiv* gesetzt. Menüpfade werden
 
 ### 2.1 Systemvoraussetzungen
 
-Package Turbo läuft unter Windows, macOS und Linux mit Python 3.11 oder neuer. Benötigt werden die Pakete PySide6 (ab 6.9) und lxml.
+Package Turbo läuft unter Windows, macOS und Linux mit Python 3.11 oder neuer. Die Installation richtet die benötigten Python-Pakete PySide6, lxml, msoffcrypto-tool, pypdf und rfc8785 ein.
 
 Package Turbo benötigt keine Java-Laufzeitumgebung.
 
@@ -120,7 +120,7 @@ Der Name des Toplevel-Ordners folgt dem Muster `SIP_[Ablieferungsdatum JJJJMMTT]
 | Paket schreibgeschützt öffnen | Im Menü *Paket → Paket schreibgeschützt öffnen...* wählen. Das Paket kann dann nicht bearbeitet werden. |
 | Erneutes Öffnen | Im Menü *Paket* werden das aktuelle und die drei zuletzt geöffneten Pakete angezeigt. |
 
-Die Liste der zuletzt geöffneten Pakete bleibt nach einem Neustart erhalten. Drag & Drop zum Öffnen eines Pakets ist möglich, solange kein Paket geöffnet ist.
+Die Liste der zuletzt geöffneten Pakete bleibt nach einem Neustart erhalten. Sie zeigt die Paketordnernamen; der vollständige Pfad erscheint beim Verweilen mit der Maus. Drag & Drop zum Öffnen eines Pakets ist möglich, solange kein Paket geöffnet ist.
 
 Nach dem Öffnen zeigt der Editor das Register *Überblick*:
 
@@ -199,7 +199,9 @@ Die **Menüleiste** enthält:
 - *Extras*: Suche, Paket vollständig validieren, Zeiträume auf Ablieferung kumulieren, *Normalisierung*, Stichprobe, *Benutzervorgaben*.
 - *Hilfe*: Benutzerdokumentation, Tastenbelegung, Über Package Turbo.
 
-Die **Toolbar** enthält Neues Paket, Paket öffnen, Speichern, Paket schliessen, Paket vollständig validieren, Reports, Neue Notiz, Stichprobe, Perspektive zurücksetzen (↺) und das Feld für die einfache Suche.
+Die **Toolbar** enthält Neues Paket, Paket öffnen, Speichern, Paket-Undo/Redo, Paket schliessen, Paket vollständig validieren, Reports, Neue Notiz, Stichprobe und Perspektive zurücksetzen (↺). Das Suchfeld öffnet die einfache Suche. Die Kopfzeile zeigt den Paketnamen sowie gegebenenfalls *Nur Lesen* oder *Ungespeichert*. Nicht verfügbare Befehle sind abgeschwächt dargestellt.
+
+Bei schmalen Bereichen werden Aktionsregister als Symbole dargestellt; ihre Namen erscheinen beim Verweilen mit der Maus. Lange Tabellen- und Navigatorwerte sowie eingeschränkte Auswahltexte können ebenfalls per Tooltip vollständig angezeigt werden.
 
 Das **Viewmenü** der Navigatoren befindet sich in deren Titelzeile: Filter (z. B. *HG*, *OSP*, *OSP+D*, *leer*) sowie *+* (Alles aufklappen) und *−* (Alles zuklappen).
 
@@ -330,7 +332,7 @@ Bei sehr grossen Ablieferungen wird *Alles aufklappen* automatisch deaktiviert, 
 
 Der Schwellwert gilt gemeinsam für alle Navigatoren.
 
-### 7.8 Aktionsviews: Validierungshilfe, Notiz, Stichprobe, Suche, Änderungen
+### 7.8 Aktionsviews: Validierungshilfe, Notiz, Stichprobe, Suche, Änderungen und Metadaten-Historie
 
 | Aktionsview | Inhalt |
 |---|---|
@@ -339,6 +341,7 @@ Der Schwellwert gilt gemeinsam für alle Navigatoren.
 | *Stichprobe* | Zufällig ausgewählte Dossiers. |
 | *Suche* | Resultate der einfachen und der erweiterten Suche. |
 | *Änderungen* | Änderungen an den Metadaten seit dem letzten Speichern. |
+| *Metadaten-Historie* | Dauerhafte Ereignisse, Suche und Filter, Wiederherstellung, Speicherbereinigung und PREMIS/METS-Export (siehe 9.6 und 9.8). |
 
 ### 7.9 Primärdaten in Navigatoren und Aktionsviews
 
@@ -596,8 +599,9 @@ Strukturelle Änderungen (Objekte erstellen, verschieben, löschen, zuweisen) er
 ### 9.6 Dauerhafte Metadaten-Historie
 
 Vor dem Erstellen eines Pakets oder der ersten Bearbeitung wird die Identität unter
-*Erstellt durch* bzw. *Bearbeitet durch* bestätigt. Nach der Bestätigung führen Sie die
-gewünschte Aktion erneut aus. Die Identität kann auch unter
+*Erstellt durch* bzw. *Bearbeitet durch* bestätigt. Beim Erstellen öffnet sich danach der
+Erstellungsdialog; eine durch die Identitätsabfrage unterbrochene Bearbeitung führen Sie
+anschliessend erneut aus. Die Identität kann auch unter
 *Extras → Benutzervorgaben → Metadaten-Historie* festgelegt werden.
 Sie wird bei den zugehörigen Änderungen gespeichert; verwenden Sie keine vertraulichen
 Zugangsdaten in diesem Feld.
@@ -663,8 +667,9 @@ Texte im aktiven Eingabefeld gehören nicht zu dieser Wiederherstellung.
 > **Wichtig:** Automatische Aufbewahrungsbereinigung folgt noch; die manuelle Vorschau ist
 > nachfolgend beschrieben. Der Undo-Verlauf ist
 > sitzungsgebunden; nach einem Absturz können unbenutzte
-> Schnappschussordner verbleiben. Automatische Zwischenprüfungen und der Exportvorgang selbst
-> werden nicht protokolliert; die vollständige PREMIS-Objektmodellierung ist noch nicht abgeschlossen.
+> Schnappschussordner verbleiben. Automatische Zwischenprüfungen werden nicht protokolliert;
+> erfolgreiche Exporte erzeugen ein Abschlussereignis. Die vollständige PREMIS-Objektmodellierung
+> ist noch nicht abgeschlossen.
 
 ### 9.7 Fortschritt und Abbrechen
 
@@ -1056,6 +1061,17 @@ Eine Perspektive speichert die Grössen der Bereiche. Ihre Positionen bleiben un
 ### 16.2 Grundeinstellung wiederherstellen
 
 Mit ↺ in der Toolbar oder *Ansicht → Perspektive zurücksetzen* wird die Grundeinstellung der Benutzeroberfläche wiederhergestellt.
+
+### 16.3 Farbschema und weitere Einstellungen
+
+Unter *Extras → Benutzervorgaben → Erscheinungsbild → Farbschema* stehen *Systemstandard*,
+*Hell* und *Dunkel* zur Auswahl. *Systemstandard* ist die Voreinstellung und folgt dem vom
+Betriebssystem gemeldeten Farbschema; falls kein Schema gemeldet wird, dient die Systempalette
+als Fallback. Mit *OK* wird die Auswahl übernommen und für den nächsten Start gespeichert.
+
+Im selben Dialog können Sie die Identität, Speicher- und Aufbewahrungsgrenzen, Validierung,
+Navigatoren, Suche, Stichprobe, Report-Hersteller und Sprache einstellen. Die Sprachänderung
+wird erst nach einem Neustart wirksam; das Farbschema wird unmittelbar übernommen.
 
 ![Benutzervorgaben](img/21-benutzervorgaben.png)
 

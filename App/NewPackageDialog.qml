@@ -45,6 +45,8 @@ Dialog {
             valueRole: "version"
             Layout.columnSpan: 2
             Layout.fillWidth: true
+            ToolTip.visible: hovered && currentText.length > 0
+            ToolTip.text: currentText
         }
 
         Label { text: qsTr("Ablieferungstyp") }
@@ -68,7 +70,7 @@ Dialog {
             Layout.fillWidth: true
             Layout.columnSpan: 2
             onTextEdited: root.nameEdited = true
-            color: root.nameError ? "#c62828" : palette.text
+            color: root.nameError ? palette.brightText : palette.text
         }
         Item { width: 1; visible: root.nameError.length > 0 }
         Label {
@@ -76,7 +78,7 @@ Dialog {
             Layout.fillWidth: true
             visible: root.nameError.length > 0
             text: root.nameError
-            color: "#c62828"
+            color: palette.brightText
             wrapMode: Text.Wrap
         }
 

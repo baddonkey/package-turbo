@@ -33,7 +33,15 @@ Dialog {
         Label { text: qsTr("Ordner") }
         Label { text: qsTr("%1 ausgewählt").arg(root.folderKeys.length) }
         Label { text: qsTr("Ziel") }
-        Label { text: root.targetName; elide: Text.ElideRight; Layout.fillWidth: true }
+        Label {
+            id: targetLabel
+            text: root.targetName
+            elide: Text.ElideRight
+            Layout.fillWidth: true
+            ToolTip.visible: targetHover.hovered && truncated
+            ToolTip.text: text
+            HoverHandler { id: targetHover }
+        }
 
         Label { text: qsTr("Anzahl OSP Stufen") }
         SpinBox {

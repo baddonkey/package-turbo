@@ -72,6 +72,8 @@ ColumnLayout {
                 const index = backend.historyEventTypes.indexOf(backend.historyEventFilter)
                 return index < 0 ? 0 : index + 1
             }
+            ToolTip.visible: hovered && currentText.length > 0
+            ToolTip.text: currentText
             onActivated: backend.setHistoryEventFilter(index === 0 ? "" : backend.historyEventTypes[index - 1])
         }
         ComboBox {
@@ -82,6 +84,8 @@ ColumnLayout {
             currentIndex: backend.historyOutcomeFilter === "success" ? 1
                         : backend.historyOutcomeFilter === "failure" ? 2
                         : backend.historyOutcomeFilter === "discarded" ? 3 : 0
+            ToolTip.visible: hovered && currentText.length > 0
+            ToolTip.text: currentText
             onActivated: backend.setHistoryOutcomeFilter(["", "success", "failure", "discarded"][index])
         }
     }

@@ -4,6 +4,22 @@ Approved scope: an independent, offline Python/PySide6/QML desktop workspace for
 eCH-0160 SIPs. Keep existing useful workflows and shortcuts; do not rewrite as a
 web application. No commits, pushes or history rewrites without explicit approval.
 
+## Current Status
+
+The seven milestones below are historical implementation snapshots, not a declaration that
+all release requirements are complete. The current UI has persistent System/Light/Dark themes,
+palette-aware menus, dialogs and icons, responsive action tabs, and full-text access for
+truncated values. The native QML tests exercise theme changes, menu states, recent names,
+tab clicks/scrolling, dialog contrast and badge contrast. Visual and accessibility qualification
+across platforms, display scales, languages and complete workflows remains a release task.
+
+The normative matrix currently contains 59 partially assessed requirements and one out-of-scope
+transfer-container requirement. The dictionary presence tests do not establish full semantic
+coverage. Current outstanding work includes complete standard/profile coverage, preservation
+identity and event modeling, performance qualification, translations, native releases and rights
+review; details are in Remaining Milestones. The last full local suite recorded 550 passing tests;
+individual milestone counts below are historical snapshots.
+
 ## First Milestone
 
 Implemented on `feature/independent-ech0160-audit-ux`:
@@ -445,13 +461,13 @@ complete language catalogues and native artifact qualification.
 
 ### 2. Complete Standards Coverage
 
-- Build a normative requirement-to-code/test matrix from the official specifications,
-  data dictionaries and schemas for 1.0-1.3, including relevant legacy FILES-DOC forms.
+- Extend the existing requirement, data-dictionary and XSD inventories into complete
+  requirement-to-code/test coverage for 1.0-1.3, including relevant legacy FILES-DOC forms.
 - Complete clause-level assessment and mandatory-field test mapping using the first-pass
   matrices documented above; compare requirement text, not just identifier presence.
-- Complete attributes, repeated/complex values, dateiRef attributes, file properties' full
-  normative semantics,
-  archival operations, attachments and editable Vorgang/Aktivitaet where the schema permits.
+- Complete remaining attributes, repeated/complex values, file-property semantics, archival
+  operations and attachments. Selected dateiRef attributes, repeated text and schema-permitted
+  GEVER Vorgang/Aktivitaet editing are implemented, but are not exhaustive coverage.
 - Model choices, cardinality, attributes and facets faithfully. Use lxml.XMLSchema for
   validation; do not hand-write an XSD validation engine.
 - Preserve unknown nodes/attributes, identifiers and original checksum algorithms.
@@ -471,10 +487,10 @@ complete language catalogues and native artifact qualification.
 
 ### 3. Recoverable Transactions And Audit Integration
 
-- Route editor, structure, file, note, repair, factory and migration commands through a
-  Qt-independent workspace service. Capture structured before/after deltas before mutation.
-- Stage XML and filesystem changes outside the SIP. Use durable intent, source revision/hash
-  checks, writer locking and reversible replacements. Do not claim multi-file atomicity.
+- Extend the existing staged/audited workspace to all remaining mutation and migration paths,
+  capturing structured before/after deltas. XML/filesystem staging, durable intent, revision
+  checks, writer locks and recoverable replacements already exist for implemented workflows;
+  two filesystem renames are not jointly atomic.
 - Couple commit outcomes to journal records; an audit failure must block an unaudited commit.
   Record failed/discarded/partial operations truthfully and recover after process interruption.
 - Track individual accepted semantic changes, not keystrokes. Group batch operations by
@@ -507,9 +523,9 @@ complete language catalogues and native artifact qualification.
 
 ### 5. Identification And Native Releases
 
-- Use a maintained signature-identification tool/database, preferably a Siegfried/PRONOM
-  adapter, after redistribution review. Run offline, identify tool/database versions and
-  report unknown/ambiguous/extension-only evidence honestly.
+- Expand the existing optional external DROID adapter and limited PUID-to-KaD mapping; DROID
+  is not bundled. Assess a maintained offline signature tool/database and redistribution terms,
+  identify tool/database versions and report unknown/ambiguous/extension-only evidence honestly.
 - Separate identification from KaD/receiver suitability. Identifying a format does not
   prove PDF/A or other specialist conformance. Conversion is not in this milestone.
 - Native Windows/macOS/Linux artifacts, native CI runners and installed-app smoke tests.

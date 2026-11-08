@@ -21,32 +21,45 @@ ColumnLayout {
             spacing: 6
 
             Label {
+                id: issueCount
+                Layout.preferredWidth: 190
+                Layout.minimumWidth: 110
                 leftPadding: 6
                 text: backend.validationFilter === ""
                       ? qsTr("%1 Fehler, %2 Warnungen").arg(backend.errorCount).arg(backend.warningCount)
                       : qsTr("%1 von %2 Einträgen").arg(backend.visibleIssueCount).arg(backend.errorCount + backend.warningCount)
+                elide: Text.ElideRight
+                ToolTip.visible: countHover.hovered && truncated
+                ToolTip.text: text
+                HoverHandler { id: countHover }
             }
 
             Item { Layout.fillWidth: true }
 
             ComboBox {
-                Layout.preferredWidth: 280
+                Layout.preferredWidth: 220
+                Layout.minimumWidth: 145
+                Layout.maximumWidth: 245
                 model: [qsTr("Alle anzeigen")].concat(backend.checkNames)
                 currentIndex: backend.validationFilter === "" ? 0 : backend.checkNames.indexOf(backend.validationFilter) + 1
+                ToolTip.visible: hovered && currentText.length > 0
+                ToolTip.text: currentText
                 onActivated: function (index) {
                     backend.setValidationFilter(index === 0 ? "" : backend.checkNames[index - 1])
                 }
             }
 
             ToolButton {
-                text: qsTr("Kopieren")
+                icon.source: "icons/copy.svg"
+                icon.color: palette.buttonText
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("Die selektierten Zeilen in die Zwischenablage kopieren")
                 onClicked: table.copySelection()
             }
 
             ToolButton {
-                text: qsTr("Export")
+                icon.source: "icons/download.svg"
+                icon.color: palette.buttonText
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("Tabelle nach Excel (CSV) exportieren")
                 onClicked: root.exportRequested()
@@ -87,8 +100,8 @@ ColumnLayout {
                     if (modelData.confirm) {
                         confirmFix.action = modelData.id
                         confirmFix.rows = table.selectedRows.slice()
-                        confirmFix.text = qsTr("«%1» ausführen? Diese Aktion verändert das Paket im Dateisystem bzw. löscht Daten.")
-                                          .arg(modelData.label)
+                        confirmFix.message = qsTr("«%1» ausführen? Diese Aktion verändert das Paket im Dateisystem bzw. löscht Daten.")
+                                             .arg(modelData.label)
                         confirmFix.open()
                     } else {
                         fileOps.applyFix(modelData.id, table.selectedRows)
@@ -100,12 +113,12 @@ ColumnLayout {
         }
     }
 
-    MessageDialog {
+    MessageBox {
         id: confirmFix
         property string action: ""
         property var rows: []
         title: qsTr("Bestätigen")
-        buttons: MessageDialog.Ok | MessageDialog.Cancel
+        buttonSet: "okCancel"
         onAccepted: fileOps.applyFix(action, rows)
     }
 }

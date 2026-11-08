@@ -10,7 +10,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 from lxml import etree
-from PySide6.QtCore import Property, QObject, QSettings, QThread, QUrl, Signal, Slot
+from PySide6.QtCore import Property, QObject, QSettings, QThread, QUrl, Qt, Signal, Slot
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 
 from . import navigators, notes, sampling, schema, search, structure, validation
@@ -254,6 +254,10 @@ class Backend(QObject):
     def __init__(self, settings: QSettings, parent=None):
         super().__init__(parent)
         self._settings = settings
+        app = QGuiApplication.instance()
+        self._style_hints = app.styleHints() if app is not None else None
+        if self._style_hints is not None:
+            self._style_hints.colorSchemeChanged.connect(lambda _scheme: self.settingsChanged.emit())
         self._pkg: SipPackage | None = None
         self._dirty = False
         self._busy = False
@@ -911,6 +915,27 @@ class Backend(QObject):
         self.set_setting("ui/language", value if value in ("de", "fr") else "de")
 
     language = Property(str, _get_language, _set_language, notify=settingsChanged)
+
+    def _get_theme_mode(self) -> str:
+        value = str(self.setting("ui/theme", "system")).lower()
+        return value if value in ("system", "light", "dark") else "system"
+
+    def _set_theme_mode(self, value: str) -> None:
+        self.set_setting("ui/theme", value if value in ("system", "light", "dark") else "system")
+
+    themeMode = Property(str, _get_theme_mode, _set_theme_mode, notify=settingsChanged)
+
+    @Property(str, notify=settingsChanged)
+    def systemTheme(self) -> str:
+        app = QGuiApplication.instance()
+        if app is None:
+            return "light"
+        scheme = app.styleHints().colorScheme()
+        if scheme == Qt.ColorScheme.Dark:
+            return "dark"
+        if scheme == Qt.ColorScheme.Light:
+            return "light"
+        return "dark" if app.palette().window().color().lightnessF() < 0.5 else "light"
 
     # ---------------------------------------------------------------- opening / closing
 

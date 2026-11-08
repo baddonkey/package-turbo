@@ -39,7 +39,15 @@ Dialog {
                 ColumnLayout {
                     anchors.fill: parent
                     RowLayout {
-                        Label { Layout.fillWidth: true; text: modelData.path; elide: Text.ElideMiddle }
+                        Label {
+                            id: backupPathLabel
+                            Layout.fillWidth: true
+                            text: modelData.path
+                            elide: Text.ElideMiddle
+                            ToolTip.visible: pathHover.hovered && truncated
+                            ToolTip.text: text
+                            HoverHandler { id: pathHover }
+                        }
                         Label { text: qsTr("%1 Byte").arg(modelData.bytes) }
                     }
                     Label { text: modelData.archived; color: palette.placeholderText }

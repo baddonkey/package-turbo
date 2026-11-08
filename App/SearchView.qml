@@ -98,6 +98,8 @@ ColumnLayout {
                             id: kindBox
                             Layout.preferredWidth: 200
                             model: [qsTr("(kein Kriterium)")].concat(searchCtl.kinds.map(k => k.label))
+                            ToolTip.visible: hovered && currentText.length > 0
+                            ToolTip.text: currentText
                             onActivated: function (index) {
                                 criterionRow.fields = index > 0 ? searchCtl.fields(searchCtl.kinds[index - 1].kind) : []
                                 fieldBox.currentIndex = criterionRow.fields.length > 0 ? 0 : -1
@@ -108,6 +110,8 @@ ColumnLayout {
                             id: fieldBox
                             Layout.preferredWidth: 220
                             model: criterionRow.fields.map(f => f.label)
+                            ToolTip.visible: hovered && currentText.length > 0
+                            ToolTip.text: currentText
                         }
                         Label { text: qsTr("Wert") }
                         TextField {
@@ -151,9 +155,10 @@ ColumnLayout {
         onRowActivated: function (row) { backend.reveal(searchTable.recordAt(row).key) }
     }
 
-    MessageDialog {
+    MessageBox {
         id: noHits
         title: qsTr("Keine Treffer")
-        buttons: MessageDialog.Ok
+        message: qsTr("Die Suche ergab keine Treffer.")
+        buttonSet: "ok"
     }
 }

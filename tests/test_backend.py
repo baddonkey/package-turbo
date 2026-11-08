@@ -28,6 +28,18 @@ def opened(backend, sip_dir):
     return backend
 
 
+def test_appearance_theme_setting_defaults_to_system_and_persists(backend):
+    assert backend.themeMode == "system"
+    assert backend.systemTheme in ("light", "dark")
+
+    for theme in ("light", "dark", "system"):
+        backend.themeMode = theme
+        assert backend.themeMode == theme
+
+    backend.themeMode = "invalid"
+    assert backend.themeMode == "system"
+
+
 def test_open_edit_save_cycle(opened, sip_dir):
     backend = opened
     assert backend.hasPackage and not backend.dirty
@@ -128,7 +140,7 @@ def test_native_creation_dialog_renders_version_choices(backend, app, tmp_path, 
     from pathlib import Path
     from PySide6.QtCore import QMetaObject, QObject, QPointF, QUrl, Qt
     from PySide6.QtGui import QFont, QFontDatabase, QRawFont, QKeySequence
-    from PySide6.QtQuick import QQuickWindow, QSGRendererInterface
+    from PySide6.QtQuick import QQuickItem, QQuickWindow, QSGRendererInterface
     from PySide6.QtQuickControls2 import QQuickStyle
     from PySide6.QtTest import QTest
     from PySide6.QtQml import QQmlComponent
@@ -157,6 +169,140 @@ def test_native_creation_dialog_renders_version_choices(backend, app, tmp_path, 
     window.setWidth(1280)
     window.setHeight(800)
     assert QTest.qWaitForWindowExposed(window, 2000)
+
+    def contrast(foreground, background):
+        def luminance(color):
+            channels = color.getRgbF()[:3]
+            linear = [value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
+                      for value in channels]
+            return sum(weight * value for weight, value in zip((0.2126, 0.7152, 0.0722), linear))
+
+        light, dark = sorted((luminance(foreground), luminance(background)), reverse=True)
+        return (light + 0.05) / (dark + 0.05)
+
+    def visual_items(root):
+        pending = [root]
+        while pending:
+            item = pending.pop()
+            yield item
+            pending.extend(item.childItems())
+
+    input_dialog = window.findChild(QObject, "inputDialog")
+    input_dialog.setProperty("title", "Neue Notiz")
+    input_dialog.setProperty("label", "Notiz zu 1 Objekt(en):")
+    input_dialog.setProperty("multiline", True)
+    badge_component = QQmlComponent(engine, QUrl.fromLocalFile(str(Path(__file__).resolve().parents[1] / "App" / "KindBadge.qml")))
+    badge = badge_component.create()
+    badge_text = badge.findChild(QQuickItem, "kindBadgeText")
+    for theme in ("light", "dark"):
+        backend.themeMode = theme
+        assert QMetaObject.invokeMethod(input_dialog, "open")
+        QTest.qWait(50)
+        background_color = input_dialog.property("background").property("color")
+        assert contrast(input_dialog.property("header").property("color"), background_color) >= 4.5
+        assert contrast(input_dialog.findChild(QQuickItem, "inputDialogPrompt").property("color"), background_color) >= 4.5
+        assert contrast(window.property("secondaryTextColor"), background_color) >= 4.5
+        assert window.grabWindow().save(str(tmp_path / ("input-dialog-" + theme + ".png")))
+        assert QMetaObject.invokeMethod(input_dialog, "close")
+        message_dialog = window.findChild(QObject, "messageDialog")
+        message_dialog.setProperty("title", "Hinweis")
+        message_dialog.setProperty("message", "Prüfung abgeschlossen")
+        assert QMetaObject.invokeMethod(message_dialog, "open")
+        QTest.qWait(30)
+        assert contrast(message_dialog.findChild(QQuickItem, "messageBoxTitle").property("color"),
+                message_dialog.property("header").property("color")) >= 4.5
+        assert contrast(message_dialog.findChild(QQuickItem, "messageBoxText").property("color"),
+                message_dialog.property("background").property("color")) >= 4.5
+        assert QMetaObject.invokeMethod(message_dialog, "close")
+        for dialog_name in ("newPackageDialog", "preferencesDialog", "massAssignDialog", "massEditDialog",
+                            "auditExportDialog", "storageCleanupDialog"):
+            checked_dialog = window.findChild(QObject, dialog_name)
+            assert QMetaObject.invokeMethod(checked_dialog, "open")
+            QTest.qWait(30)
+            dialog_background = checked_dialog.property("background").property("color")
+            assert contrast(checked_dialog.property("header").property("color"), dialog_background) >= 4.5
+            visible_labels = [item for item in checked_dialog.findChildren(QQuickItem)
+                              if item.metaObject().className().startswith("Label_")
+                              and item.isVisible() and item.isEnabled() and item.property("text")]
+            assert visible_labels
+            for label in visible_labels:
+                assert contrast(label.property("color"), dialog_background) >= 4.5, (dialog_name, theme, label.property("text"))
+            if dialog_name == "preferencesDialog":
+                checked_dialog.findChild(QObject, "auditOperatorField").setProperty("text", "Beispiel")
+                checked_dialog.findChild(QObject, "reporterNameField").setProperty("text", "Beispiel")
+                assert window.grabWindow().save(str(tmp_path / ("preferences-" + theme + ".png")))
+            assert QMetaObject.invokeMethod(checked_dialog, "close")
+        for kind in ("paket", "ablieferung", "provenienz", "ordnungssystem", "ordnungssystemposition",
+                     "dossier", "subdossier", "dokument", "vorgang", "aktivitaet", "mappe", "datei", "ordner", "unknown"):
+            badge.setProperty("kind", kind)
+            assert contrast(badge_text.property("color"), badge.property("color")) >= 4.5
+    backend.themeMode = "system"
+    tabs = window.findChild(QQuickItem, "actionTabs")
+    tab_list = window.findChild(QQuickItem, "actionTabList")
+    scrollbar = window.findChild(QQuickItem, "actionTabScrollBar")
+    window.setMinimumWidth(600)
+    for width, scroll_expected in ((1280, False), (980, False), (650, True), (1280, False)):
+        window.setWidth(width)
+        QTest.qWait(100)
+        assert scrollbar.isVisible() == scroll_expected
+        if scroll_expected:
+            assert tab_list.property("contentWidth") > tab_list.width()
+            assert scrollbar.mapToScene(QPointF(0, 0)).y() >= tabs.mapToScene(QPointF(0, tabs.height())).y()
+        for name, index in (("notesActionTab", 1), ("sampleActionTab", 2)):
+            tabs.setProperty("currentIndex", 0)
+            QTest.qWait(30)
+            button = window.findChild(QQuickItem, name)
+            point = button.mapToScene(QPointF(button.width() / 2, button.height() * 0.8)).toPoint()
+            QTest.mouseMove(window, point)
+            QTest.mouseClick(window, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, point)
+            assert tabs.property("currentIndex") == index
+            if scroll_expected:
+                tabs.setProperty("currentIndex", 0)
+                QTest.qWait(30)
+                start = scrollbar.mapToScene(QPointF(scrollbar.width() * 0.2, scrollbar.height() / 2)).toPoint()
+                end = scrollbar.mapToScene(QPointF(scrollbar.width() * 0.8, scrollbar.height() / 2)).toPoint()
+                QTest.mousePress(window, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
+                QTest.mouseMove(window, end, 50)
+                QTest.mouseRelease(window, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, end)
+                assert tab_list.property("contentX") > 0
+    window.setMinimumWidth(980)
+    package_menu = window.findChild(QObject, "packageMenu")
+    recent_name = "SIP_20260421_KOST_eCH1.3G_1a-3d-IO"
+    backend._settings.setValue("recentPackages", ["C:/packages/" + recent_name])
+    backend.recentChanged.emit()
+    assert QMetaObject.invokeMethod(package_menu, "open")
+    QTest.qWait(50)
+    recent_item = package_menu.findChild(QQuickItem, "recentPackage-0")
+    recent_label = recent_item.property("contentItem")
+    assert recent_item.property("text") == "1  " + recent_name
+    assert package_menu.property("width") > 200
+    assert recent_label.property("lineCount") == 1
+    assert recent_label.property("paintedWidth") <= recent_label.width()
+    long_name = "SIP_" + "longpackageidentifier" * 10
+    backend._settings.setValue("recentPackages", ["C:/packages/" + long_name])
+    backend.recentChanged.emit()
+    QTest.qWait(50)
+    recent_item = package_menu.findChild(QQuickItem, "recentPackage-0")
+    recent_label = recent_item.property("contentItem")
+    assert recent_item.property("text") == "1  " + long_name
+    assert package_menu.property("width") <= window.width() - 24
+    assert recent_label.property("lineCount") > 1
+    assert recent_label.property("paintedWidth") <= recent_label.width()
+    assert recent_item.height() >= recent_label.property("paintedHeight")
+    menu_items = package_menu.findChildren(QQuickItem)
+    open_item = next(item for item in menu_items if item.property("text") == "Paket öffnen..."
+                     and item.property("contentItem") is not None)
+    save_item = next(item for item in menu_items if item.property("text") == "Speichern"
+                     and item.property("contentItem") is not None)
+    assert open_item.isEnabled() and not save_item.isEnabled()
+    for theme, active_color, disabled_color in (("light", "#1c2d2a", "#899791"),
+                                                 ("dark", "#e5eeeb", "#82948e")):
+        backend.themeMode = theme
+        app.processEvents()
+        assert open_item.property("contentItem").property("color").name() == active_color
+        assert save_item.property("contentItem").property("color").name() == disabled_color
+    assert QMetaObject.invokeMethod(package_menu, "close")
+    backend.themeMode = "system"
     dialog = window.findChild(QObject, "newPackageDialog")
     assert QMetaObject.invokeMethod(dialog, "open")
     app.processEvents()
@@ -181,6 +327,23 @@ def test_native_creation_dialog_renders_version_choices(backend, app, tmp_path, 
     from ph_backend.sip import SipPackage
 
     backend.set_package(SipPackage.open_folder(sip_dir))
+    assert save_item.isEnabled()
+    tabs.setProperty("currentIndex", 0)
+    QTest.qWait(50)
+    for theme in ("light", "dark"):
+        backend.themeMode = theme
+        QTest.qWait(50)
+        delivery_label = window.findChild(QQuickItem, "deliveryHeaderLabel")
+        delivery_background = window.findChild(QQuickItem, "deliveryHeaderBackground")
+        assert contrast(delivery_label.property("color"), delivery_background.property("color")) >= 4.5
+        for object_name in ("tableHeadingLabel", "navigatorHeadingLabel"):
+            headings = [item for item in visual_items(window.contentItem())
+                        if item.objectName() == object_name and item.isVisible()]
+            assert headings, object_name
+            for heading in headings:
+                assert contrast(heading.property("color"), heading.parentItem().property("color")) >= 4.5
+        assert window.grabWindow().save(str(tmp_path / ("package-" + theme + ".png")))
+    backend.themeMode = "system"
     package = backend.package
     backend.editor.setField(package.key(next(package.iter_kind("dossier"))), "titel", "Audited native edit")
     assert backend.save()
@@ -200,8 +363,17 @@ def test_native_creation_dialog_renders_version_choices(backend, app, tmp_path, 
     assert preferences.findChild(QObject, "workspaceLimit").property("value") == backend.workspaceLimitGiB
     assert preferences.findChild(QObject, "retentionCopies").property("value") == backend.retentionCopies
     assert preferences.findChild(QObject, "retentionAge").property("value") == backend.retentionAgeDays
-    assert QMetaObject.invokeMethod(preferences, "close")
+    theme_choices = preferences.findChild(QObject, "themeModeBox")
+    assert theme_choices.property("count") == 3
+    assert theme_choices.property("currentIndex") == 0
+    theme_choices.setProperty("currentIndex", 2)
+    assert QMetaObject.invokeMethod(preferences, "accept")
     app.processEvents()
+    assert backend.themeMode == "dark"
+    assert window.property("darkMode") is True
+    backend.themeMode = "system"
+    app.processEvents()
+    assert window.property("darkMode") == (backend.systemTheme == "dark")
     assert window.grabWindow().save(str(tmp_path / "metadata-history.png"))
     content = next(element for element in package.iter_kind("ordner") if package.text(element, "name") == "content")
     FileController(backend).newFolder(package.key(content), "NativeStaged")

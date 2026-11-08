@@ -36,16 +36,32 @@ Dialog {
         columns: 2
 
         Label { text: qsTr("Objekt") }
-        Label { text: root.targetName; elide: Text.ElideRight; Layout.fillWidth: true }
+        Label {
+            id: targetLabel
+            text: root.targetName
+            elide: Text.ElideRight
+            Layout.fillWidth: true
+            ToolTip.visible: targetHover.hovered && truncated
+            ToolTip.text: text
+            HoverHandler { id: targetHover }
+        }
         Label { text: qsTr("Betroffene Objekte") }
         ComboBox {
             id: kindBox
             Layout.fillWidth: true
             model: root.kinds.map(k => k.label)
+            ToolTip.visible: hovered && currentText.length > 0
+            ToolTip.text: currentText
             onActivated: root.loadFields()
         }
         Label { text: qsTr("Metadatum") }
-        ComboBox { id: fieldBox; Layout.fillWidth: true; model: root.fields.map(f => f.label) }
+        ComboBox {
+            id: fieldBox
+            Layout.fillWidth: true
+            model: root.fields.map(f => f.label)
+            ToolTip.visible: hovered && currentText.length > 0
+            ToolTip.text: currentText
+        }
 
         Label { text: root.field && root.field.type === "timespan" ? qsTr("von / bis") : qsTr("Wert") }
         RowLayout {

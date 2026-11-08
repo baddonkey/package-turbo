@@ -62,11 +62,14 @@ ColumnLayout {
         }
     }
 
-    MessageDialog {
+    MessageBox {
         id: confirmDelete
         title: qsTr("Notizen löschen")
-        text: qsTr("Sollen die ausgewählten Notizen gelöscht werden?")
-        buttons: MessageDialog.Yes | MessageDialog.No
-        onAccepted: notesCtl.deleteNotes(table.selectedRows.map(r => notesTable.recordAt(r).noteKey))
+        message: qsTr("Sollen die ausgewählten Notizen gelöscht werden?")
+        buttonSet: "yesNo"
+        onActionChosen: function (action) {
+            if (action === "yes")
+                notesCtl.deleteNotes(table.selectedRows.map(r => notesTable.recordAt(r).noteKey))
+        }
     }
 }
