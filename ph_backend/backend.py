@@ -32,7 +32,7 @@ MAX_RECENT = 3
 # Checks that only scan the file system / metadata and are cheap enough to repeat after file operations.
 FILE_SYSTEM_CHECKS = {"illegal_entries", "header_content", "wrong_file", "wrong_folder", "missing_file",
                       "missing_folder", "surplus_file", "surplus_folder", "file_format", "identical_files",
-                      "positions_and_dossiers", "sip_name", "package_size"}
+                      "positions_and_dossiers", "sip_name", "package_size", "folder_level"}
 DROID_FORMAT_CHECK = "droid_format"
 _AUDIT_ENTITY_KINDS = {"dossier", "subdossier", "mappe", "dokument", "archivischerVorgang",
                        "archivischeNotiz", "ordnungssystemposition"}

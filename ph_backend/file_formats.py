@@ -84,7 +84,16 @@ KAD_FORMATS: dict[str, FileFormat] = {
     **_formats("CAD/CAM", RECOMMENDED, "IFC", "ifc"),
 }
 
+DROID_KAD_FORMATS: dict[str, FileFormat] = {
+    "fmt/1756": KAD_FORMATS["odt"],
+    "fmt/412": KAD_FORMATS["docx"],
+}
+
 
 def classify(filename: str) -> FileFormat:
     ext = PurePosixPath(filename).suffix.lower().lstrip(".")
     return KAD_FORMATS.get(ext, FileFormat(ext.upper() or "(ohne Endung)", "", UNKNOWN))
+
+
+def classify_puid(puid: str) -> FileFormat | None:
+    return DROID_KAD_FORMATS.get(puid.strip())

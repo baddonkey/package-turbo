@@ -170,6 +170,49 @@ def test_files_layout_and_classification_roundtrip_by_release(tmp_path, version)
     assert any(issue["value"] == "content/series/primary.txt" for issue in unassigned), version
 
 
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+def test_files_grouping_assignment_roundtrip_by_release(tmp_path, version):
+    from ph_backend import files, package_factory, structure
+
+    pkg = package_factory.create_package(
+        tmp_path, f"SIP_20261108_Test_FILES_Grouping_{version}", "Test",
+        version=version, delivery_type="FILES")
+    content = next(element for element in pkg.iter_kind("ordner") if pkg.text(element, "name") == "content")
+    group = files.create_folder(pkg, content, "series")
+    sources = []
+    for name in ("assigned.txt", "unassigned.txt"):
+        source = tmp_path / name
+        source.write_text(name, encoding="utf-8")
+        sources.append(source)
+    files.import_paths(pkg, group, sources)
+    file_elements = {pkg.text(element, "name"): element for element in pkg.children(group, "datei")}
+    dossier = structure.add_objects(pkg, next(pkg.iter_kind("ordnungssystemposition")), "dossier")[0]
+    if "mappe" in structure.allowed_children(pkg, dossier):
+        assignment_target = structure.add_objects(pkg, dossier, "mappe")[0]
+        target_kind = "mappe"
+    else:
+        assignment_target = dossier
+        target_kind = "dossier"
+    assert structure.assign_files(pkg, assignment_target, [file_elements["assigned.txt"]]) == 1
+
+    pkg.save()
+    reopened = SipPackage.open_folder(pkg.root_dir)
+    reopened_dossier = next(reopened.iter_kind("dossier"))
+    reopened_target = (next(reopened_dossier.iter(reopened.q("mappe")))
+                       if target_kind == "mappe" else reopened_dossier)
+    reopened_assigned = reopened.file_by_id(file_elements["assigned.txt"].get("id"))
+    reopened_unassigned = reopened.file_by_id(file_elements["unassigned.txt"].get("id"))
+
+    assert reopened.relpath(reopened_assigned).as_posix() == "content/series/assigned.txt"
+    assert reopened.fs_path(reopened_assigned).is_file()
+    assert reopened.referenced_files(reopened_target) == [reopened_assigned]
+    assert reopened.relpath(reopened_unassigned).as_posix() == "content/series/unassigned.txt"
+    issues = Validator(reopened).run(full=True)
+    assert not [issue for issue in issues if issue["checkId"] in {"schema", "invalid_reference"}]
+    unassigned = [issue for issue in issues if issue["checkId"] == "unassigned_files"]
+    assert [issue["value"] for issue in unassigned] == ["content/series/unassigned.txt"], version
+
+
 def test_v13_datei_ref_supports_multiple_file_ids(tmp_path):
     from ph_backend import files, package_factory, structure
 

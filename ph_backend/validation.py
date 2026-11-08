@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 import zipfile
 from collections import defaultdict
 from dataclasses import dataclass
@@ -31,6 +32,34 @@ _OFFICE_EXTENSIONS = {".doc", ".docm", ".docx", ".dot", ".dotm", ".dotx", ".ppt"
                       ".xlsb", ".xlsm", ".xlsx", ".xlt", ".xltm", ".xltx"}
 
 
+def _terminate_droid_process_tree(process) -> None:
+    if os.name == "nt":
+        # The Windows DROID launcher is a batch file which starts Java as a child process.
+        try:
+            result = subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5, check=False)
+        except (OSError, subprocess.SubprocessError):
+            result = None
+        if result is None or result.returncode != 0:
+            try:
+                process.terminate()
+            except OSError:
+                pass
+    else:
+        try:
+            process.terminate()
+        except ProcessLookupError:
+            pass
+    try:
+        process.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        try:
+            process.kill()
+        except ProcessLookupError:
+            pass
+        process.wait()
+
+
 @dataclass(frozen=True)
 class Check:
     id: str
@@ -51,6 +80,7 @@ CHECKS = [
     Check("package_size", "Paketgrösse", _STRUCTURE, True),
     Check("file_count", "Dateianzahl im SIP", _STRUCTURE, True),
     Check("folder_file_count", "Dateien pro Ordner", _STRUCTURE, True),
+    Check("folder_level", "Dossier- und Mappenordner", _STRUCTURE, True),
     Check("path_length", "Pfadlänge", _STRUCTURE, False),
     Check("checksum", "Prüfsumme", _STRUCTURE, True),
     Check("invalid_reference", "Dateireferenz", _FILE_SYSTEM, False),
@@ -127,7 +157,11 @@ class Validator:
         for i, check in enumerate(steps):
             if cancelled and cancelled():
                 break
-            getattr(self, "_check_" + check.id)()
+            check_method = getattr(self, "_check_" + check.id)
+            if check.id == "droid_format":
+                check_method(cancelled=cancelled)
+            else:
+                check_method()
             if progress:
                 progress(int((i + 1) / len(steps) * 100))
         return self.issues
@@ -194,7 +228,7 @@ class Validator:
                           f"Das Format {fmt.name} ist im KOST-Katalog archivischer Dateiformate (KaD) nicht erfasst.",
                           "name", rel.name, WARNING)
 
-    def _check_droid_format(self):
+    def _check_droid_format(self, cancelled=None):
         if not self.identify_formats or self.pkg.file_root is None:
             return
         content_directory = Path(self.pkg.file_root) / "content"
@@ -223,12 +257,24 @@ class Validator:
         try:
             with tempfile.TemporaryDirectory(prefix="package-turbo-droid-") as temporary_directory:
                 report_path = Path(temporary_directory) / "identification.csv"
-                result = subprocess.run(
+                process = subprocess.Popen(
                     [executable, "-q", "-R", "-co", "FILE_PATH", "NAME", "EXTENSION_MISMATCH", "PUID",
                      "FORMAT_NAME", "-a", str(content_directory), "-o", str(report_path)],
-                    capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300, check=False)
-                if result.returncode != 0 or not report_path.is_file():
-                    detail = result.stderr.strip() or f"Exit-Code {result.returncode}"
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                deadline = time.monotonic() + 300
+                while process.poll() is None:
+                    if cancelled and cancelled():
+                        _terminate_droid_process_tree(process)
+                        return
+                    if time.monotonic() >= deadline:
+                        _terminate_droid_process_tree(process)
+                        self._add("droid_format", None,
+                                  "Die DROID-Formaterkennung wurde nach 300 Sekunden abgebrochen.", severity=WARNING)
+                        return
+                    time.sleep(0.1)
+
+                if process.returncode != 0 or not report_path.is_file():
+                    detail = f"Exit-Code {process.returncode}"
                     self._add("droid_format", None,
                               f"DROID konnte die Dateien nicht identifizieren ({detail}).", severity=WARNING)
                     return
@@ -239,9 +285,7 @@ class Validator:
                     if not reader.fieldnames or not required_columns.issubset(reader.fieldnames):
                         raise csv.Error("DROID report is missing required columns")
                     for row in reader:
-                        if row.get("EXTENSION_MISMATCH", "").strip().lower() != "true":
-                            continue
-                        reported_path = row.get("FILE_PATH", "").strip()
+                        reported_path = (row.get("FILE_PATH") or "").strip()
                         if not reported_path:
                             continue
                         path_key = os.path.normcase(os.path.abspath(reported_path))
@@ -249,13 +293,24 @@ class Validator:
                         if entry is None:
                             continue
                         element, relative = entry
-                        format_name = row.get("FORMAT_NAME", "").strip() or "unbekanntes Format"
-                        puid = row.get("PUID", "").strip()
+                        format_name = (row.get("FORMAT_NAME") or "").strip() or "unbekanntes Format"
+                        puid = (row.get("PUID") or "").strip()
                         identification = f"{format_name} ({puid})" if puid else format_name
-                        self._add("droid_format", element,
-                                  f"Die Dateiendung stimmt nicht mit der DROID-Identifikation {identification} überein.",
-                                  "name", relative.name, ERROR, path=relative.as_posix())
-        except (OSError, csv.Error, subprocess.SubprocessError) as exc:
+                        identified_format = file_formats.classify_puid(puid)
+                        if identified_format and identified_format.rating == file_formats.NOT_ACCEPTED:
+                            already_reported = any(issue["checkId"] == "file_format"
+                                                   and issue["key"] == self.pkg.key(element)
+                                                   for issue in self.issues)
+                            if not already_reported:
+                                self._add("file_format", element,
+                                          f"Das von DROID identifizierte Format {identification} ist gemäss "
+                                          "KOST-Katalog archivischer Dateiformate (KaD) nicht archivtauglich.",
+                                          "name", relative.name, ERROR, path=relative.as_posix())
+                        if row.get("EXTENSION_MISMATCH", "").strip().lower() == "true":
+                            self._add("droid_format", element,
+                                      f"Die Dateiendung stimmt nicht mit der DROID-Identifikation {identification} überein.",
+                                      "name", relative.name, ERROR, path=relative.as_posix())
+        except (OSError, UnicodeError, csv.Error, subprocess.SubprocessError) as exc:
             self._add("droid_format", None,
                       f"DROID konnte die Dateien nicht identifizieren ({exc}).", severity=WARNING)
 
@@ -298,7 +353,9 @@ class Validator:
             return
         total = sum(p.stat().st_size for p in self.pkg.file_root.rglob("*") if p.is_file())
         if total > MAX_PACKAGE_SIZE:
-            self._add("package_size", None, f"Das Paket ist {total / 1024 ** 3:.2f} GB gross (maximal 8 GB).",
+            self._add("package_size", None,
+                      f"Das Paket ist {total / 1024 ** 3:.2f} GB gross (maximal 8 GB). "
+                      "Kontaktieren Sie vor der Vorbereitung oder Übermittlung das zuständige Archiv.",
                       value=str(total), severity=WARNING)
 
     def _check_file_count(self):
@@ -316,6 +373,25 @@ class Validator:
                 self._add("folder_file_count", folder,
                           f"Der Ordner enthält {len(direct_files)} Dateien; empfohlen sind höchstens "
                           f"{RECOMMENDED_FILES_PER_FOLDER:,}.", "name", self.pkg.text(folder, "name"), WARNING)
+
+    def _check_folder_level(self):
+        levels = set()
+        for reference in self.pkg.root.iter(self.pkg.q("dateiRef")):
+            owner = reference.getparent()
+            while owner is not None and localname(owner) not in ("dossier", "subdossier", "mappe"):
+                owner = owner.getparent()
+            if owner is None:
+                continue
+            for identifier in (reference.text or "").split():
+                element = self.pkg.file_by_id(identifier)
+                path = self.pkg.relpath(element) if element is not None else None
+                if path is not None and len(path.parts) > 1 and path.parts[0] == "content":
+                    levels.add(len(path.parts) - 2)
+        if len(levels) > 1:
+            self._add("folder_level", None,
+                      "Die Ordner der Dossiers und Mappen liegen nicht auf gleicher Ebene unter content/. "
+                      "Eine einheitliche Ebene wird empfohlen.",
+                      value=", ".join(str(level) for level in sorted(levels)), severity=WARNING)
 
     def _check_path_length(self):
         top = self.pkg.root_dir.name if self.pkg.root_dir else ""

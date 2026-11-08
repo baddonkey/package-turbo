@@ -769,13 +769,13 @@ Package Turbo prüft die Dateien in `content` anhand des **Katalogs archivischer
 | Nicht akzeptiert (z. B. ODT/ODP, DNG, MHTML, ARC, STEP) | Fehler |
 | Nicht im KaD erfasst | Warnung |
 
-> **Wichtig:** Die KaD-Bewertung beruht auf der Dateiendung. Bei der vollständigen Validierung vergleicht DROID zusätzlich die Dateiendung mit seiner Signaturerkennung; erkannte Abweichungen werden als Fehler gemeldet. DROID muss über `PATH` oder `DROID_EXECUTABLE` verfügbar sein. Fehlt DROID oder schlägt die Erkennung fehl, erscheint eine Warnung. Auch DROID weist keine Formatkonformität nach (z. B. PDF/A); Varianten mit gleicher Endung (z. B. PDF/A-3 oder GeoTIFF) lassen sich weiterhin nicht unterscheiden. Package Turbo konvertiert keine Dateien.
+> **Wichtig:** Die KaD-Bewertung beruht grundsätzlich auf der Dateiendung. Für derzeit hinterlegte DROID-PUIDs (ODT und DOCX) wird zusätzlich die identifizierte Formatbewertung verwendet. Bei der vollständigen Validierung vergleicht DROID ausserdem die Dateiendung mit seiner Signaturerkennung; erkannte Abweichungen werden als Fehler gemeldet. DROID muss über `PATH` oder `DROID_EXECUTABLE` verfügbar sein. Fehlt DROID oder schlägt die Erkennung fehl, erscheint eine Warnung. Auch DROID weist keine Formatkonformität nach (z. B. PDF/A); Varianten mit gleicher Endung (z. B. PDF/A-3 oder GeoTIFF) lassen sich weiterhin nicht unterscheiden. Package Turbo konvertiert keine Dateien.
 
 Die vollständige Validierung erkennt passwortgeschützte PDFs, verschlüsselte Einträge in ZIP-Dateien und passwortgeschützte Office-Dateien in unterstützten Formaten. Andere Verschlüsselungsverfahren werden nicht umfassend erkannt; ein fehlender Hinweis ist daher kein allgemeiner Nachweis für unverschlüsselte Dateien.
 
 #### 10.4.2 Paketgrösse
 
-Warnung, wenn das Paket die empfohlene Grösse von 8 GB übersteigt. Klären Sie grössere Ablieferungen vorab mit dem zuständigen Archiv. Eine Aufteilung auf mehrere Pakete wird nicht angeboten.
+Warnung, wenn das Paket die empfohlene Grösse von 8 GB übersteigt. Klären Sie grössere Ablieferungen vorab mit dem zuständigen Archiv. Eine Aufteilung auf mehrere Pakete wird nicht angeboten. Wenn eine Ablieferung aufgrund ihrer Grösse auf mehrere SIP aufgeteilt werden soll, ist vorher das zuständige Archiv zu kontaktieren.
 
 #### 10.4.3 Pfadlänge
 
@@ -832,6 +832,10 @@ sowie `! # $ % ( ) + , - . = @ [ ] { } ~ _` und Leerzeichen.
 | Rückgängig machen | *Extras → Normalisierung → Datei- und Ordnernamen denormalisieren...*. |
 
 Die Normalisierung verändert die Arbeitskopie. Beim nächsten *Speichern* werden auch zuvor vorgenommene Metadatenänderungen übernommen.
+
+#### 10.4.11 Transfercontainer
+
+Package Turbo öffnet und bearbeitet entpackte SIP-Verzeichnisse. Transfercontainer (z. B. ZIP-Dateien) werden weder erstellt noch geöffnet. Falls ein Empfangsarchiv einen Transfercontainer verlangt, muss dessen Format vor der Übermittlung mit dem Archiv vereinbart werden.
 
 ### 10.5 Prüfung des Aufbaus des Ordnungssystems und der Dossierbenennung
 

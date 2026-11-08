@@ -29,7 +29,18 @@ def test_normative_matrix_tracks_all_release_requirement_ids():
         "partial-primary-data-content-location-verified", "partial-metadata-location-xml-verified",
         "partial-unprefixed-arelda-generation-verified", "partial-release-namespace-mismatch-verified",
         "partial-files-entity-type-consistency-verified", "partial-protection-period-roundtrip-verified",
-        "partial-files-layout-classification-roundtrip-verified", "partial-droid-extension-mismatch-verified"}
+        "partial-files-layout-classification-roundtrip-verified", "partial-droid-extension-mismatch-verified",
+        "partial-files-name-path-rules-verified", "partial-archive-contact-instruction-verified",
+        "partial-gever-folder-dossier-mass-assign-verified", "partial-files-grouping-assignment-roundtrip-verified",
+        "partial-sequential-dossier-folders-mass-assignment-verified",
+        "partial-sequential-primary-file-names-verified", "partial-top-level-content-folder-deep-classification-verified",
+        "partial-sequential-mappe-folder-roundtrip-verified", "partial-archive-contact-splitting-guidance",
+        "partial-source-field-roundtrip-verified", "partial-distinct-sip-roots-verified",
+        "partial-multiple-sip-folder-handling-verified", "partial-assigned-folder-depth-warning-verified",
+        "partial-gever-entity-profile-verified", "partial-droid-puid-kad-suitability-verified",
+        "partial-source-metadata-creation-roundtrip-verified", "partial-delivery-profile-selection-roundtrip-verified",
+        "partial-files-integrated-doc-simple-classification-verified", "partial-core-package-model-roundtrip-verified",
+        "out-of-scope"}
     assert all(row["candidate_code_surface"] and row["test_evidence"] for row in rows)
     assert sum(row["in_1_0"] == "true" for row in rows) == 51
     assert sum(row["in_1_1"] == "true" for row in rows) == 54
@@ -42,18 +53,36 @@ def test_normative_matrix_distinguishes_profiles_and_known_slices():
         rows = {row["requirement_id"]: row for row in csv.DictReader(stream)}
 
     assert rows["M_4.3-1"]["profile_scope"] == "GEVER"
+    assert rows["M_4.3-1"]["assessment"] == "partial-gever-entity-profile-verified"
     assert rows["M_4.3-2"]["assessment"] == "partial-gever-relationships-verified"
     assert rows["M_4.8-2"]["assessment"] == "partial-gever-classification-scheme-verified"
+    assert rows["M_4.8-1"]["assessment"] == "partial-source-metadata-creation-roundtrip-verified"
+    assert rows["M_4.2-1"]["assessment"] == "partial-core-package-model-roundtrip-verified"
     assert rows["M_4.4-1"]["profile_scope"] == "FILES"
     assert rows["M_4.4-1"]["assessment"] == "partial-files-entity-type-consistency-verified"
     assert rows["M_4.4-2"]["assessment"] == "partial-files-relationships-verified"
     assert rows["M_4.4-3"]["assessment"] == "partial-files-classification-verified"
     assert rows["M_4.8-3"]["assessment"] == "partial-files-layout-classification-roundtrip-verified"
+    assert rows["M_4.8-4"]["assessment"] == "partial-files-integrated-doc-simple-classification-verified"
+    assert rows["T_6.1-1"]["assessment"] == "out-of-scope"
+    assert rows["S_5.7-2"]["assessment"] == "partial-files-name-path-rules-verified"
+    assert rows["S_5.7-3"]["assessment"] == "partial-files-grouping-assignment-roundtrip-verified"
+    assert rows["S_5.6-1"]["assessment"] == "partial-gever-folder-dossier-mass-assign-verified"
+    assert rows["S_5.6-2"]["assessment"] == "partial-sequential-dossier-folders-mass-assignment-verified"
+    assert rows["S_5.6-3"]["assessment"] == "partial-sequential-primary-file-names-verified"
+    assert rows["S_5.6-4"]["assessment"] == "partial-top-level-content-folder-deep-classification-verified"
+    assert rows["S_5.6-5"]["assessment"] == "partial-sequential-mappe-folder-roundtrip-verified"
+    assert rows["S_5.4-1"]["assessment"] == "partial-distinct-sip-roots-verified"
+    assert rows["S_5.4-7"]["assessment"] == "partial-assigned-folder-depth-warning-verified"
     assert rows["P_3.2-2"]["assessment"] == "partial-droid-extension-mismatch-verified"
+    assert rows["P_3.2-1"]["assessment"] == "partial-droid-puid-kad-suitability-verified"
     assert rows["M_4.12-2"]["in_1_0"] == "false"
     assert rows["M_4.12-2"]["in_1_3_0"] == "true"
     assert "release gating and XSD-valid save/reopen" in rows["M_4.12-2"]["test_evidence"]
     assert rows["M_4.5-1"]["assessment"] == "partial-sip-roundtrip-verified"
+    assert rows["M_4.5-2"]["assessment"] == "partial-source-field-roundtrip-verified"
+    assert rows["M_4.2-2"]["assessment"] == "partial-delivery-profile-selection-roundtrip-verified"
+    assert rows["A_2.5-1"]["assessment"] == "partial-multiple-sip-folder-handling-verified"
     assert rows["M_4.1-1"]["assessment"] == "partial-metadata-location-xml-verified"
     assert rows["M_4.1-2"]["assessment"] == "partial-release-namespace-mismatch-verified"
     assert rows["M_4.1-3"]["assessment"] == "partial-unprefixed-arelda-generation-verified"
@@ -69,6 +98,8 @@ def test_normative_matrix_distinguishes_profiles_and_known_slices():
     assert rows["S_5.2-1"]["assessment"] == "partial-limit-verified"
     assert rows["S_5.2-2"]["assessment"] == "partial-limit-verified"
     assert rows["S_5.1-1"]["assessment"] == "partial-size-boundary-warning-verified"
+    assert rows["S_5.1-2"]["assessment"] == "partial-archive-contact-instruction-verified"
+    assert rows["S_5.1-3"]["assessment"] == "partial-archive-contact-splitting-guidance"
     assert rows["S_5.7-1"]["assessment"] == "partial-files-content-hierarchy-verified"
     assert rows["S_5.4-6"]["assessment"] == "partial-primary-data-content-location-verified"
     assert rows["S_5.5-1"]["assessment"] == "partial-path-length-boundary-verified"

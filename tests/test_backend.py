@@ -47,13 +47,27 @@ def test_open_edit_save_cycle(opened, sip_dir):
     assert "Neuer Dossiertitel" in (sip_dir / "header" / "metadata.xml").read_text(encoding="utf-8")
 
 
-@pytest.mark.parametrize("version,expected", [("1.2", "5.0"), ("1.3", "5.1")])
-def test_creation_controller_selects_version(backend, tmp_path, version, expected):
+@pytest.mark.parametrize(("version", "expected"), [("1.0", "4.0"), ("1.1", "4.1"),
+                                                    ("1.2", "5.0"), ("1.3", "5.1")])
+@pytest.mark.parametrize("delivery_type", ["GEVER", "FILES"])
+def test_creation_controller_selects_version_and_delivery_type(backend, tmp_path, version, expected, delivery_type):
+    from ph_backend import validation
+    from ph_backend.sip import SipPackage
+
     ctl = PackageController(backend, [])
     assert ctl.xsdVersions[0]["version"] == "1.3"
     assert ctl.createPackage(QUrl.fromLocalFile(str(tmp_path)), "SIP_20260104_Amt_Selected", "Amt",
-                             "GEVER", "", "Plan", QUrl(), version)
+                             delivery_type, "", "Plan", QUrl(), version)
     assert backend.package.root.get("schemaVersion") == expected
+    assert backend.package.delivery_type == delivery_type
+    expected_type = "ablieferungGeverSIP" if delivery_type == "GEVER" else "ablieferungFilesSIP"
+    assert backend.package.delivery.get("{http://www.w3.org/2001/XMLSchema-instance}type") == expected_type
+    assert not [issue for issue in validation.Validator(backend.package).run(full=True)
+                if issue["checkId"] == "schema"]
+    backend.package.save()
+    reopened = SipPackage.open_folder(backend.package.root_dir)
+    assert reopened.root.get("schemaVersion") == expected
+    assert reopened.delivery_type == delivery_type
 
 
 def test_package_creation_records_initial_audit_event(backend, tmp_path):

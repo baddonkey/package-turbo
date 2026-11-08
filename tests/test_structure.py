@@ -135,6 +135,27 @@ def test_new_files_package(tmp_path):
 
 
 @pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+@pytest.mark.parametrize("delivery_type", ["GEVER", "FILES"])
+def test_package_creation_transfers_source_metadata_values(tmp_path, version, delivery_type):
+    pkg = package_factory.create_package(
+        tmp_path, f"SIP_20261108_Test_SourceMetadata_{version}_{delivery_type}", "Receiving office",
+        delivery_type=delivery_type, creator="Source creator", system_name="Source system", version=version)
+
+    assert pkg.text(pkg.delivery, "ablieferndeStelle") == "Receiving office"
+    assert pkg.text(pkg.provenance, "aktenbildnerName") == "Source creator"
+    assert pkg.text(pkg.classification_system, "name") == "Source system"
+    assert _schema_errors(pkg) == []
+
+    pkg.save()
+    reopened = SipPackage.open_folder(pkg.root_dir)
+
+    assert reopened.text(reopened.delivery, "ablieferndeStelle") == "Receiving office"
+    assert reopened.text(reopened.provenance, "aktenbildnerName") == "Source creator"
+    assert reopened.text(reopened.classification_system, "name") == "Source system"
+    assert _schema_errors(reopened) == []
+
+
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
 @pytest.mark.parametrize(("delivery_type", "matching_type", "mismatching_type"), [
     ("FILES", "ablieferungFilesSIP", "ablieferungGeverSIP"),
     ("GEVER", "ablieferungGeverSIP", "ablieferungFilesSIP"),
@@ -180,6 +201,41 @@ def test_creation_preserves_selected_schema_version(tmp_path, version, schema_ve
     assert reopened.root.get("schemaVersion") == schema_version
     reopened_files = {path.name: path.read_bytes() for path in (reopened.file_root / "header" / "xsd").glob("*.xsd")}
     assert reopened_files == source_files
+    assert _schema_errors(reopened) == []
+
+
+@pytest.mark.parametrize("version,schema_version", [
+    ("1.0", "4.0"), ("1.1", "4.1"), ("1.2", "5.0"), ("1.3", "5.1")])
+@pytest.mark.parametrize("delivery_type", ["GEVER", "FILES"])
+def test_minimal_package_model_roundtrips_by_release(tmp_path, version, schema_version, delivery_type):
+    pkg = package_factory.create_package(
+        tmp_path, f"SIP_20261108_Test_Model_{version}_{delivery_type}", "Test",
+        version=version, delivery_type=delivery_type)
+    expected_type = "ablieferungGeverSIP" if delivery_type == "GEVER" else "ablieferungFilesSIP"
+    xsi_type = "{http://www.w3.org/2001/XMLSchema-instance}type"
+
+    assert pkg.kind(pkg.root) == "paket"
+    assert pkg.delivery is not None and pkg.delivery.get(xsi_type) == expected_type
+    assert pkg.provenance.getparent() is pkg.delivery
+    assert pkg.classification_system.getparent() is pkg.delivery
+    assert len(list(pkg.iter_kind("ordnungssystemposition"))) == 1
+    toc_roots = {pkg.text(entry, "name") for entry in pkg.children(pkg.table_of_contents, "ordner")}
+    assert toc_roots == {"header", "content"}
+    assert pkg.root.get("schemaVersion") == schema_version
+    assert _schema_errors(pkg) == []
+
+    pkg.save()
+    reopened = SipPackage.open_folder(pkg.root_dir)
+
+    assert reopened.kind(reopened.root) == "paket"
+    assert reopened.delivery_type == delivery_type
+    assert reopened.delivery.get(xsi_type) == expected_type
+    assert reopened.provenance.getparent() is reopened.delivery
+    assert reopened.classification_system.getparent() is reopened.delivery
+    assert len(list(reopened.iter_kind("ordnungssystemposition"))) == 1
+    assert {reopened.text(entry, "name") for entry in reopened.children(reopened.table_of_contents, "ordner")} == {
+        "header", "content"}
+    assert reopened.root.get("schemaVersion") == schema_version
     assert _schema_errors(reopened) == []
 
 
@@ -275,6 +331,51 @@ def test_gever_dossier_mappe_document_relationships_roundtrip(tmp_path, version)
     assert _schema_errors(reopened) == []
 
 
+@pytest.mark.parametrize("version", ["1.2", "1.3"])
+def test_sequential_mappe_names_and_content_folders_roundtrip(tmp_path, version):
+    pkg = package_factory.create_package(
+        tmp_path, f"SIP_20261108_Test_SequentialMappen_{version}", "Test",
+        version=version, delivery_type="GEVER")
+    position = next(pkg.iter_kind("ordnungssystemposition"))
+    dossier = structure.add_objects(pkg, position, "dossier", title="Case")[0]
+    content = next(folder for folder in pkg.iter_kind("ordner") if pkg.text(folder, "name") == "content")
+    mappe_folders = {}
+    if version == "1.2":
+        for name in ("m0001", "m0002"):
+            mappe = structure.add_objects(pkg, dossier, "mappe", title=name)[0]
+            folder = files.create_folder(pkg, content, name)
+            mappe_folders[name] = (mappe, folder)
+    else:
+        outer_mappe = structure.add_objects(pkg, dossier, "mappe", title="m0001")[0]
+        outer_folder = files.create_folder(pkg, content, "m0001")
+        inner_mappe = structure.add_objects(pkg, outer_mappe, "mappe", title="m0002")[0]
+        inner_folder = files.create_folder(pkg, outer_folder, "m0002")
+        mappe_folders = {"m0001": (outer_mappe, outer_folder), "m0002": (inner_mappe, inner_folder)}
+
+    expected_paths = {}
+    for name, (mappe, folder) in mappe_folders.items():
+        source = tmp_path / f"{name}.txt"
+        source.write_text(name, encoding="utf-8")
+        files.import_paths(pkg, folder, [source])
+        file_element = next(element for element in pkg.children(folder, "datei"))
+        document = structure.add_objects(pkg, mappe, "dokument", title=f"Document {name}")[0]
+        assert structure.assign_files(pkg, document, [file_element]) == 1
+        expected_paths[name] = pkg.relpath(file_element).as_posix()
+
+    assert _schema_errors(pkg) == []
+    pkg.save()
+    reopened = SipPackage.open_folder(pkg.root_dir)
+    reopened_mappen = {pkg.text(mappe, "titel"): mappe for mappe in reopened.iter_kind("mappe")}
+
+    assert list(reopened_mappen) == ["m0001", "m0002"]
+    for name, expected_path in expected_paths.items():
+        mappe = reopened_mappen[name]
+        document = next(element for element in reopened.children(mappe, "dokument"))
+        file_element = reopened.referenced_files(document)[0]
+        assert reopened.relpath(file_element).as_posix() == expected_path
+    assert _schema_errors(reopened) == []
+
+
 def test_v12_mappen_reject_v13_only_recursion(tmp_path):
     pkg = package_factory.create_package(tmp_path, "SIP_20260104_Amt_Legacy", "Amt", version="1.2")
     position = next(pkg.iter_kind("ordnungssystemposition"))
@@ -319,6 +420,13 @@ def test_csv_import(tmp_path):
     assert pkg.text(positions["10"], "federfuehrendeOrganisationseinheit") == "x"
     assert _schema_errors(pkg) == []
 
+    pkg.save()
+    reopened = SipPackage.open_folder(pkg.root_dir)
+    reopened_positions = {reopened.text(position, "nummer"): position
+                          for position in reopened.iter_kind("ordnungssystemposition")}
+    assert reopened.text(reopened_positions["10"], "federfuehrendeOrganisationseinheit") == "x"
+    assert _schema_errors(reopened) == []
+
 
 def test_csv_import_requires_nummer(tmp_path):
     csv_path = tmp_path / "bad.csv"
@@ -360,8 +468,156 @@ def test_build_import_assign_and_validate(new_pkg, tmp_path):
     names = {pkg.text(f, "name") for f in pkg.iter_kind("datei") if pkg.relpath(f).parts[0] == "content"}
     assert names == {"P1.pdf", "P2.txt", "P3.pdf"} or all(n.startswith("P") for n in names)
     pkg.save()
+
+
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+def test_mass_assign_maps_content_folders_to_dossiers_roundtrip_by_release(tmp_path, version):
+    pkg = package_factory.create_package(
+        tmp_path, f"SIP_20261108_Test_FolderDossier_{version}", "Test", version=version)
+    content = next(folder for folder in pkg.iter_kind("ordner") if pkg.text(folder, "name") == "content")
+    source_folder = tmp_path / "akten" / "fall"
+    source_folder.mkdir(parents=True)
+    (source_folder / "dokument.txt").write_text("classified file", encoding="utf-8")
+    files.import_paths(pkg, content, [source_folder.parent])
+    top = next(folder for folder in pkg.children(content, "ordner") if pkg.text(folder, "name") == "akten")
+    structure.delete(pkg, list(pkg.iter_kind("ordnungssystemposition")))
+
+    created, unassigned = structure.mass_assign(
+        pkg, [top], pkg.classification_system, osp_levels=1, dossier_levels=1, include_top=True)
+
+    assert created == 2 and unassigned == 0
+    position = next(pkg.iter_kind("ordnungssystemposition"))
+    dossier = next(pkg.iter_kind("dossier"))
+    file_element = next(element for element in pkg.iter_kind("datei")
+                        if pkg.relpath(element).as_posix() == "content/akten/fall/dokument.txt")
+    assert pkg.text(position, "titel") == "akten"
+    assert pkg.text(dossier, "titel") == "fall"
+    document = next(dossier.iter(pkg.q("dokument")))
+    assert pkg.referenced_files(document) == [file_element]
+
+    pkg.save()
+    reopened = SipPackage.open_folder(pkg.root_dir)
+    reopened_dossier = next(reopened.iter_kind("dossier"))
+    reopened_file = reopened.file_by_id(file_element.get("id"))
+
+    assert reopened.text(next(reopened.iter_kind("ordnungssystemposition")), "titel") == "akten"
+    assert reopened.text(reopened_dossier, "titel") == "fall"
+    assert reopened.relpath(reopened_file).as_posix() == "content/akten/fall/dokument.txt"
+    reopened_document = next(reopened_dossier.iter(reopened.q("dokument")))
+    assert reopened.referenced_files(reopened_document) == [reopened_file]
+    assert _schema_errors(reopened) == []
     full = {i["checkId"] for i in Validator(pkg).run(full=True)}
     assert not full & {"checksum", "surplus_file", "missing_file", "schema"}
+
+
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+def test_mass_assign_preserves_sequential_dossier_folder_names(tmp_path, version):
+    pkg = package_factory.create_package(
+        tmp_path, f"SIP_20261108_Test_SequentialDossiers_{version}", "Test", version=version)
+    content = next(folder for folder in pkg.iter_kind("ordner") if pkg.text(folder, "name") == "content")
+    source_folders = []
+    for folder_name in ("d0001", "d0002"):
+        source_folder = tmp_path / folder_name
+        source_folder.mkdir()
+        (source_folder / "document.txt").write_text(folder_name, encoding="utf-8")
+        source_folders.append(source_folder)
+    files.import_paths(pkg, content, source_folders)
+    dossier_folders = sorted(pkg.children(content, "ordner"), key=lambda folder: pkg.text(folder, "name"))
+    position = next(pkg.iter_kind("ordnungssystemposition"))
+
+    created, unassigned = structure.mass_assign(
+        pkg, dossier_folders, position, osp_levels=0, dossier_levels=1, include_top=True)
+
+    assert created == 2 and unassigned == 0
+    dossiers = {pkg.text(dossier, "titel"): dossier for dossier in pkg.iter_kind("dossier")}
+    assert list(dossiers) == ["d0001", "d0002"]
+    expected_paths = {name: f"content/{name}/document.txt" for name in dossiers}
+    for dossier_name, dossier in dossiers.items():
+        document = next(dossier.iter(pkg.q("dokument")))
+        assert [pkg.relpath(file_element).as_posix() for file_element in pkg.referenced_files(document)] == [
+            expected_paths[dossier_name]]
+
+    pkg.save()
+    reopened = SipPackage.open_folder(pkg.root_dir)
+    reopened_dossiers = {pkg.text(dossier, "titel"): dossier for dossier in reopened.iter_kind("dossier")}
+
+    assert list(reopened_dossiers) == ["d0001", "d0002"]
+    for dossier_name, dossier in reopened_dossiers.items():
+        document = next(dossier.iter(reopened.q("dokument")))
+        assert [reopened.relpath(file_element).as_posix() for file_element in
+                reopened.referenced_files(document)] == [expected_paths[dossier_name]]
+    assert _schema_errors(reopened) == []
+
+
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+def test_shorten_paths_uses_sequential_primary_file_names_and_preserves_sources(tmp_path, version):
+    pkg = package_factory.create_package(
+        tmp_path, f"SIP_20261108_Test_SequentialPrimaryFiles_{version}", "Test", version=version)
+    content = next(folder for folder in pkg.iter_kind("ordner") if pkg.text(folder, "name") == "content")
+    sources = []
+    for name in ("invoice.pdf", "scan.tif"):
+        source = tmp_path / name
+        source.write_bytes(name.encode("ascii"))
+        sources.append(source)
+    files.import_paths(pkg, content, sources)
+    file_elements = list(pkg.children(content, "datei"))
+    original_by_id = {element.get("id"): pkg.text(element, "name") for element in file_elements}
+    dossier = structure.add_objects(pkg, next(pkg.iter_kind("ordnungssystemposition")), "dossier")[0]
+    assert structure.assign_files(pkg, dossier, file_elements) == len(file_elements)
+    referenced_ids = pkg.referenced_ids()
+
+    assert files.shorten_paths(pkg) == 2
+    renamed_by_id = {element.get("id"): (pkg.text(element, "name"), pkg.text(element, "originalName"))
+                     for element in file_elements}
+    assert renamed_by_id == {
+        file_elements[0].get("id"): ("P1.pdf", "invoice.pdf"),
+        file_elements[1].get("id"): ("P2.tif", "scan.tif"),
+    }
+
+    pkg.save()
+    reopened = SipPackage.open_folder(pkg.root_dir)
+    reopened_dossier = next(reopened.iter_kind("dossier"))
+    reopened_documents = list(reopened_dossier.iter(reopened.q("dokument")))
+    reopened_files = {element.get("id"): element for element in reopened.iter_kind("datei")
+                      if element.get("id") in original_by_id}
+
+    assert reopened.referenced_ids() == referenced_ids
+    assert {ident: (reopened.text(element, "name"), reopened.text(element, "originalName"))
+            for ident, element in reopened_files.items()} == renamed_by_id
+    assert {file_element.get("id") for document in reopened_documents
+            for file_element in reopened.referenced_files(document)} == referenced_ids
+    assert _schema_errors(reopened) == []
+
+
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+def test_gever_dossier_folder_can_stay_top_level_under_deep_classification(tmp_path, version):
+    pkg = package_factory.create_package(
+        tmp_path, f"SIP_20261108_Test_TopLevelDossierFolder_{version}", "Test", version=version)
+    root_position = next(pkg.iter_kind("ordnungssystemposition"))
+    middle_position = structure.add_objects(pkg, root_position, "ordnungssystemposition", title="Middle")[0]
+    leaf_position = structure.add_objects(pkg, middle_position, "ordnungssystemposition", title="Leaf")[0]
+    dossier = structure.add_objects(pkg, leaf_position, "dossier", title="Case")[0]
+    content = next(folder for folder in pkg.iter_kind("ordner") if pkg.text(folder, "name") == "content")
+    top_level_dossier_folder = files.create_folder(pkg, content, "d0001")
+    source = tmp_path / "primary.txt"
+    source.write_text("primary content", encoding="utf-8")
+    files.import_paths(pkg, top_level_dossier_folder, [source])
+    file_element = next(element for element in pkg.children(top_level_dossier_folder, "datei"))
+    assert structure.assign_files(pkg, dossier, [file_element]) == 1
+    file_id = file_element.get("id")
+
+    pkg.save()
+    reopened = SipPackage.open_folder(pkg.root_dir)
+    reopened_positions = list(reopened.iter_kind("ordnungssystemposition"))
+    reopened_dossier = next(reopened.iter_kind("dossier"))
+    reopened_file = reopened.file_by_id(file_id)
+    document = next(reopened_dossier.iter(reopened.q("dokument")))
+
+    assert len(reopened_positions) == 3
+    assert reopened_dossier.getparent() is reopened_positions[-1]
+    assert reopened.relpath(reopened_file).as_posix() == "content/d0001/primary.txt"
+    assert reopened.referenced_files(document) == [reopened_file]
+    assert _schema_errors(reopened) == []
 
 
 @pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])

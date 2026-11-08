@@ -185,6 +185,83 @@ def test_sip_file_count_limit_and_folder_recommendation(sip_dir, monkeypatch):
 
 @pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
 @pytest.mark.parametrize("delivery_type", ["GEVER", "FILES"])
+def test_assigned_dossier_folders_should_share_content_depth(tmp_path, version, delivery_type):
+    from ph_backend import files, package_factory, structure
+
+    pkg = package_factory.create_package(
+        tmp_path, f"SIP_20261108_Test_FolderDepth_{version}_{delivery_type}", "Test",
+        version=version, delivery_type=delivery_type)
+    content = next(folder for folder in pkg.iter_kind("ordner") if pkg.text(folder, "name") == "content")
+    position = next(pkg.iter_kind("ordnungssystemposition"))
+
+    def assign_file(dossier_title, *folder_names):
+        folder = content
+        for folder_name in folder_names:
+            folder = files.create_folder(pkg, folder, folder_name)
+        source = tmp_path / f"{dossier_title}.txt"
+        source.write_text(dossier_title, encoding="utf-8")
+        files.import_paths(pkg, folder, [source])
+        file_element = next(element for element in pkg.children(folder, "datei"))
+        dossier = structure.add_objects(pkg, position, "dossier", title=dossier_title)[0]
+        assert structure.assign_files(pkg, dossier, [file_element]) == 1
+
+    assign_file("First", "d0001")
+    assign_file("Second", "d0002")
+    unassigned_folder = files.create_folder(pkg, content, "unassigned")
+    nested_unassigned_folder = files.create_folder(pkg, unassigned_folder, "nested")
+    orphan = tmp_path / "orphan.txt"
+    orphan.write_text("unassigned", encoding="utf-8")
+    files.import_paths(pkg, nested_unassigned_folder, [orphan])
+    check_id = "folder_level"
+    issues = [issue for issue in Validator(pkg).run(full=True) if issue["checkId"] == check_id]
+    assert not issues
+
+    assign_file("Third", "d0003", "nested")
+    issues = [issue for issue in Validator(pkg).run(full=True) if issue["checkId"] == check_id]
+    assert len(issues) == 1
+    assert issues[0]["severity"] == WARNING
+    assert "gleicher Ebene" in issues[0]["description"]
+
+
+@pytest.mark.parametrize("version", ["1.2", "1.3"])
+@pytest.mark.parametrize("delivery_type", ["GEVER", "FILES"])
+def test_assigned_mappe_folders_should_share_content_depth(tmp_path, version, delivery_type):
+    from ph_backend import files, package_factory, structure
+
+    pkg = package_factory.create_package(
+        tmp_path, f"SIP_20261108_Test_MappeDepth_{version}_{delivery_type}", "Test",
+        version=version, delivery_type=delivery_type)
+    content = next(folder for folder in pkg.iter_kind("ordner") if pkg.text(folder, "name") == "content")
+    dossier = structure.add_objects(pkg, next(pkg.iter_kind("ordnungssystemposition")), "dossier")[0]
+
+    def assign_mapped_file(name, folder_names):
+        folder = content
+        for folder_name in folder_names:
+            folder = files.create_folder(pkg, folder, folder_name)
+        source = tmp_path / f"{name}.txt"
+        source.write_text(name, encoding="utf-8")
+        files.import_paths(pkg, folder, [source])
+        file_element = next(element for element in pkg.children(folder, "datei"))
+        mappe = structure.add_objects(pkg, dossier, "mappe", title=name)[0]
+        owner = mappe
+        if delivery_type == "GEVER":
+            owner = structure.add_objects(pkg, mappe, "dokument", title=f"Document {name}")[0]
+        assert structure.assign_files(pkg, owner, [file_element]) == 1
+
+    assign_mapped_file("m0001", ("m0001",))
+    assign_mapped_file("m0002", ("m0002",))
+    issues = [issue for issue in Validator(pkg).run(full=True) if issue["checkId"] == "folder_level"]
+    assert not issues
+
+    assign_mapped_file("m0003", ("group", "m0003"))
+    issues = [issue for issue in Validator(pkg).run(full=True) if issue["checkId"] == "folder_level"]
+    assert len(issues) == 1
+    assert issues[0]["severity"] == WARNING
+    assert "gleicher Ebene" in issues[0]["description"]
+
+
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+@pytest.mark.parametrize("delivery_type", ["GEVER", "FILES"])
 def test_recommended_package_size_boundary_is_a_warning(tmp_path, monkeypatch, version, delivery_type):
     from ph_backend import files, package_factory, validation
 
@@ -204,6 +281,7 @@ def test_recommended_package_size_boundary_is_a_warning(tmp_path, monkeypatch, v
 
     assert len(findings) == 1 and findings[0]["value"] == str(total)
     assert findings[0]["severity"] == WARNING
+    assert "Kontaktieren Sie vor der Vorbereitung oder Übermittlung" in findings[0]["description"]
 
 
 @pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
@@ -229,11 +307,50 @@ def test_recommended_path_length_boundary_is_a_warning(tmp_path, version):
     assert findings == {f"{pkg.root_dir.name}/content/{names[1][1]}": WARNING}
 
 
-def test_files_integrated_documentation_requires_pair_and_dossier_link(tmp_path):
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+def test_files_path_length_boundary_covers_files_and_folders(tmp_path, version):
+    from ph_backend import files, package_factory
+
+    pkg = package_factory.create_package(
+        tmp_path, f"SIP_20261108_Test_FILES_PathBoundary_{version}", "Test",
+        version=version, delivery_type="FILES")
+    content = next(folder for folder in pkg.iter_kind("ordner") if pkg.text(folder, "name") == "content")
+    prefix = f"{pkg.root_dir.name}/content/"
+    targets = (179, 180)
+    file_names = {target: "f" * (target - len(prefix) - 4) + ".txt" for target in targets}
+    sources = []
+    for target, name in file_names.items():
+        source = tmp_path / name
+        source.write_text("path length boundary", encoding="utf-8")
+        sources.append(source)
+    files.import_paths(pkg, content, sources)
+
+    folder_names = {target: "d" * (target - len(prefix)) for target in targets}
+    folder_paths = set()
+    for target, name in folder_names.items():
+        folder = files.create_folder(pkg, content, name)
+        folder_paths.add(f"{prefix}{name}")
+        source = tmp_path / f"folder-child-{target}.txt"
+        source.write_text("folder path length boundary", encoding="utf-8")
+        files.import_paths(pkg, folder, [source])
+
+    expected_paths = {f"{prefix}{name}" for name in file_names.values()} | folder_paths
+    findings = {issue["value"]: issue["severity"] for issue in Validator(pkg).run(full=True)
+                if issue["checkId"] == "path_length" and issue["value"] in expected_paths}
+
+    assert findings == {
+        f"{prefix}{file_names[180]}": WARNING,
+        f"{prefix}{folder_names[180]}": WARNING,
+    }
+
+
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+def test_files_integrated_documentation_uses_simple_classification(tmp_path, version):
     from ph_backend import files, package_factory, structure
 
-    pkg = package_factory.create_package(tmp_path, "SIP_20261106_Test_IntegratedDocs", "Test",
-                                         version="1.3", delivery_type="FILES")
+    pkg = package_factory.create_package(
+        tmp_path, f"SIP_20261108_Test_IntegratedDocs_{version}", "Test",
+        version=version, delivery_type="FILES")
     content = next(folder for folder in pkg.iter_kind("ordner") if pkg.text(folder, "name") == "content")
     documentation = files.create_folder(pkg, content, "1_DOK")
     readme = tmp_path / "readme.txt"
@@ -248,13 +365,34 @@ def test_files_integrated_documentation_requires_pair_and_dossier_link(tmp_path)
     data_file = tmp_path / "database.siard"
     data_file.write_bytes(b"not a format-conformance fixture")
     files.import_paths(pkg, data_folder, [data_file])
-    dossier = structure.add_objects(pkg, next(pkg.iter_kind("ordnungssystemposition")), "dossier")[0]
+    classification_positions = list(pkg.iter_kind("ordnungssystemposition"))
+    assert len(classification_positions) == 1
+    dossier = structure.add_objects(pkg, classification_positions[0], "dossier")[0]
+    assert dossier.getparent() is classification_positions[0]
     issues = Validator(pkg).run(full=True)
     assert any("Dossier" in issue["description"] for issue in issues if issue["checkId"] == "files_documentation")
 
     structure.assign_files(pkg, dossier, list(pkg.children(data_folder, "datei")))
     issues = Validator(pkg).run(full=True)
     assert not [issue for issue in issues if issue["checkId"] == "files_documentation"]
+
+    pkg.save()
+    reopened = SipPackage.open_folder(pkg.root_dir)
+    reopened_positions = list(reopened.iter_kind("ordnungssystemposition"))
+    reopened_dossier = next(reopened.iter_kind("dossier"))
+    siard_file = next(element for element in reopened.iter_kind("datei")
+                      if reopened.relpath(element).as_posix() == "content/2_DATEN/database.siard")
+    assert len(reopened_positions) == 1
+    assert reopened_dossier.getparent() is reopened_positions[0]
+    assert reopened.referenced_files(reopened_dossier) == [siard_file]
+    reopened_issues = Validator(reopened).run(full=True)
+    assert not [issue for issue in reopened_issues
+                if issue["checkId"] in {"schema", "files_documentation"}]
+
+    reopened_dossier.getparent().remove(reopened_dossier)
+    missing_dossier = [issue for issue in Validator(reopened).run(full=True)
+                       if issue["checkId"] == "files_documentation"]
+    assert any("Dossier" in issue["description"] for issue in missing_dossier), version
 
 
 def test_missing_checksum_is_reported(sip_dir):
@@ -808,6 +946,8 @@ def test_kad_classification():
     assert file_formats.classify("a.odt").rating == file_formats.NOT_ACCEPTED
     assert file_formats.classify("a.xyz").rating == file_formats.UNKNOWN
     assert file_formats.classify("noext").rating == file_formats.UNKNOWN
+    assert file_formats.classify_puid("fmt/1756").rating == file_formats.NOT_ACCEPTED
+    assert file_formats.classify_puid("fmt/412").rating == file_formats.ACCEPTED
 
 
 def test_file_format_check_follows_kad(sip_dir):
@@ -831,16 +971,23 @@ def test_droid_extension_mismatch_is_reported(sip_dir, monkeypatch):
     matching_path = pkg.fs_path(pkg.file_by_id("_file2"))
     monkeypatch.setattr(validation.shutil, "which", lambda command: "droid")
 
-    def fake_run(command, **kwargs):
+    class FinishedProcess:
+        returncode = 0
+
+        def poll(self):
+            return self.returncode
+
+    def fake_popen(command, **kwargs):
         report_path = Path(command[command.index("-o") + 1])
         with report_path.open("w", encoding="utf-8", newline="") as stream:
             writer = csv.writer(stream)
             writer.writerow(["FILE_PATH", "NAME", "EXTENSION_MISMATCH", "PUID", "FORMAT_NAME"])
             writer.writerow([str(mismatched_path), mismatched_path.name, "true", "fmt/18", "PDF"])
             writer.writerow([str(matching_path), matching_path.name, "false", "fmt/200", "Plain Text"])
-        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+            writer.writerow([str(matching_path), matching_path.name, "false", "", ""])
+        return FinishedProcess()
 
-    monkeypatch.setattr(validation.subprocess, "run", fake_run)
+    monkeypatch.setattr(validation.subprocess, "Popen", fake_popen)
     issues = [issue for issue in Validator(pkg, identify_formats=True).run(full=True)
               if issue["checkId"] == "droid_format"]
 
@@ -848,6 +995,200 @@ def test_droid_extension_mismatch_is_reported(sip_dir, monkeypatch):
     assert issues[0]["severity"] == ERROR
     assert issues[0]["value"] == "p000001.pdf"
     assert "fmt/18" in issues[0]["description"]
+
+
+def test_droid_puid_applies_kad_suitability_to_identified_format(sip_dir, monkeypatch):
+    import csv
+    from pathlib import Path
+    from ph_backend import validation
+
+    pkg = SipPackage.open_folder(sip_dir)
+    identified_path = pkg.fs_path(pkg.file_by_id("_file1"))
+    monkeypatch.setattr(validation.shutil, "which", lambda command: "droid")
+
+    class FinishedProcess:
+        returncode = 0
+
+        def poll(self):
+            return self.returncode
+
+    def fake_popen(command, **kwargs):
+        report_path = Path(command[command.index("-o") + 1])
+        with report_path.open("w", encoding="utf-8", newline="") as stream:
+            writer = csv.writer(stream)
+            writer.writerow(["FILE_PATH", "NAME", "EXTENSION_MISMATCH", "PUID", "FORMAT_NAME"])
+            writer.writerow([str(identified_path), identified_path.name, "true", "fmt/1756", "OpenDocument Text"])
+        return FinishedProcess()
+
+    monkeypatch.setattr(validation.subprocess, "Popen", fake_popen)
+    issues = [issue for issue in Validator(pkg, identify_formats=True).run(full=True)
+              if issue["checkId"] == "file_format"]
+
+    assert len(issues) == 1
+    assert issues[0]["severity"] == ERROR
+    assert issues[0]["value"] == "p000001.pdf"
+    assert "OpenDocument Text" in issues[0]["description"]
+    assert "fmt/1756" in issues[0]["description"]
+
+
+@pytest.mark.parametrize(("platform", "exit_races_with_termination"), [
+    ("posix", False), ("posix", True), ("nt", False),
+])
+def test_droid_scan_stops_and_cleans_temp_report_on_cancel(
+        sip_dir, monkeypatch, platform, exit_races_with_termination):
+    import os
+    import subprocess
+    from pathlib import Path
+    from types import SimpleNamespace
+    from ph_backend import validation
+
+    pkg = SipPackage.open_folder(sip_dir)
+    monkeypatch.setattr(validation.shutil, "which", lambda command: "droid")
+    monkeypatch.setattr(validation, "os", SimpleNamespace(name=platform, path=os.path, environ=os.environ))
+    state = {"cancelled": False, "process": None, "report_path": None}
+
+    class RunningProcess:
+        pid = 12345
+        returncode = None
+        terminated = False
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            self.terminated = True
+            if exit_races_with_termination:
+                self.returncode = 0
+                raise ProcessLookupError()
+            self.returncode = -15
+
+        def kill(self):
+            self.terminated = True
+            self.returncode = -9
+
+        def wait(self, timeout=None):
+            if self.returncode is None:
+                self.kill()
+            return self.returncode
+
+    def fake_popen(command, **kwargs):
+        state["report_path"] = Path(command[command.index("-o") + 1])
+        state["process"] = RunningProcess()
+        state["cancelled"] = True
+        return state["process"]
+
+    def fake_taskkill(command, **kwargs):
+        assert command == ["taskkill", "/PID", "12345", "/T", "/F"]
+        state["process"].terminate()
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(validation.subprocess, "Popen", fake_popen)
+    if platform == "nt":
+        monkeypatch.setattr(validation.subprocess, "run", fake_taskkill)
+    issues = Validator(pkg, identify_formats=True).run(full=True, cancelled=lambda: state["cancelled"])
+
+    assert state["process"].terminated
+    assert not state["report_path"].exists()
+    assert not [issue for issue in issues if issue["checkId"] == "droid_format"]
+
+
+def test_droid_timeout_stops_process_and_cleans_temp_report(sip_dir, monkeypatch):
+    import os
+    import subprocess
+    from pathlib import Path
+    from types import SimpleNamespace
+    from ph_backend import validation
+
+    pkg = SipPackage.open_folder(sip_dir)
+    monkeypatch.setattr(validation.shutil, "which", lambda command: "droid")
+    times = iter((1000.0, 1300.0))
+    monkeypatch.setattr(validation, "time", SimpleNamespace(monotonic=lambda: next(times), sleep=lambda delay: None))
+    state = {"process": None, "report_path": None}
+
+    class RunningProcess:
+        pid = 12345
+        returncode = None
+        terminated = False
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            self.terminated = True
+            self.returncode = -15
+
+        def kill(self):
+            self.terminated = True
+            self.returncode = -9
+
+        def wait(self, timeout=None):
+            if self.returncode is None:
+                self.kill()
+            return self.returncode
+
+    def fake_popen(command, **kwargs):
+        state["report_path"] = Path(command[command.index("-o") + 1])
+        state["report_path"].write_text("partial report", encoding="utf-8")
+        state["process"] = RunningProcess()
+        return state["process"]
+
+    def fake_taskkill(command, **kwargs):
+        assert command == ["taskkill", "/PID", "12345", "/T", "/F"]
+        state["process"].terminate()
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(validation.subprocess, "Popen", fake_popen)
+    if os.name == "nt":
+        monkeypatch.setattr(validation.subprocess, "run", fake_taskkill)
+    issues = [issue for issue in Validator(pkg, identify_formats=True).run(full=True)
+              if issue["checkId"] == "droid_format"]
+
+    assert state["process"].terminated
+    assert not state["report_path"].exists()
+    assert len(issues) == 1
+    assert issues[0]["severity"] == WARNING
+    assert "nach 300 Sekunden abgebrochen" in issues[0]["description"]
+
+
+@pytest.mark.parametrize(("failure", "expected_detail"), [
+    ("launch", "start failed"),
+    ("exit", "Exit-Code 2"),
+    ("missing_report", "Exit-Code 0"),
+    ("bad_columns", "missing required columns"),
+    ("bad_encoding", "DROID konnte die Dateien nicht identifizieren"),
+])
+def test_droid_cli_failures_warn_without_crashing_validation(sip_dir, monkeypatch, failure, expected_detail):
+    from pathlib import Path
+    from ph_backend import validation
+
+    pkg = SipPackage.open_folder(sip_dir)
+    monkeypatch.setattr(validation.shutil, "which", lambda command: "droid")
+
+    class FinishedProcess:
+        returncode = 2 if failure == "exit" else 0
+
+        def poll(self):
+            return self.returncode
+
+    def fake_popen(command, **kwargs):
+        if failure == "launch":
+            raise OSError("start failed")
+        report_path = Path(command[command.index("-o") + 1])
+        if failure == "bad_columns":
+            report_path.write_text('"UNKNOWN"\n"value"\n', encoding="utf-8")
+        elif failure == "bad_encoding":
+            report_path.write_bytes(b"\xff\xfe\xff")
+        elif failure != "missing_report":
+            report_path.write_text('"FILE_PATH","EXTENSION_MISMATCH"\n', encoding="utf-8")
+        return FinishedProcess()
+
+    monkeypatch.setattr(validation.subprocess, "Popen", fake_popen)
+    issues = [issue for issue in Validator(pkg, identify_formats=True).run(full=True)
+              if issue["checkId"] == "droid_format"]
+
+    assert len(issues) == 1, (failure, issues)
+    assert issues[0]["severity"] == WARNING
+    assert expected_detail in issues[0]["description"]
 
 
 def test_droid_missing_warns_when_identification_is_requested(sip_dir, monkeypatch):
@@ -884,6 +1225,65 @@ def test_droid_detects_pdf_content_with_txt_extension(tmp_path):
 
     assert any(issue["severity"] == ERROR and issue["value"] == "misidentified.txt"
                and "fmt/" in issue["description"] for issue in issues)
+
+
+def test_droid_puid_rates_odt_mislabeled_as_docx_against_real_docx_control(tmp_path):
+    import shutil
+    import zipfile
+    from ph_backend import files, package_factory
+
+    if not shutil.which("droid"):
+        pytest.skip("DROID is not installed")
+
+    odt_path = tmp_path / "odt-content.docx"
+    odt_mimetype = "application/vnd.oasis.opendocument.text"
+    odt_manifest = f'''<?xml version="1.0" encoding="UTF-8"?>
+<manifest:manifest xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0" manifest:version="1.3">
+  <manifest:file-entry manifest:full-path="/" manifest:media-type="{odt_mimetype}"/>
+  <manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml"/>
+</manifest:manifest>'''
+    with zipfile.ZipFile(odt_path, "w") as archive:
+        archive.writestr("mimetype", odt_mimetype, compress_type=zipfile.ZIP_STORED)
+        archive.writestr("META-INF/manifest.xml", odt_manifest)
+        archive.writestr(
+            "content.xml",
+            '<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" '
+            'office:version="1.3"><office:body><office:text/></office:body></office:document-content>')
+        archive.writestr(
+            "styles.xml",
+            '<office:document-styles xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" '
+            'office:version="1.3"/>')
+
+    docx_path = tmp_path / "genuine.docx"
+    content_types = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>'''
+    relationships = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>'''
+    word_document = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>control</w:t></w:r></w:p><w:sectPr/></w:body></w:document>'''
+    with zipfile.ZipFile(docx_path, "w") as archive:
+        archive.writestr("[Content_Types].xml", content_types)
+        archive.writestr("_rels/.rels", relationships)
+        archive.writestr("word/document.xml", word_document)
+
+    pkg = package_factory.create_package(tmp_path, "SIP_20261108_Test_DROID_KaD", "Test")
+    content = next(element for element in pkg.iter_kind("ordner") if pkg.text(element, "name") == "content")
+    files.import_paths(pkg, content, [odt_path, docx_path])
+    issues = Validator(pkg, identify_formats=True).run(full=True)
+    kad_issues = [issue for issue in issues if issue["checkId"] == "file_format"]
+    mismatch_issues = [issue for issue in issues if issue["checkId"] == "droid_format"]
+
+    assert [(issue["value"], issue["severity"]) for issue in kad_issues] == [("odt-content.docx", ERROR)]
+    assert "fmt/1756" in kad_issues[0]["description"]
+    assert [(issue["value"], issue["severity"]) for issue in mismatch_issues] == [
+        ("odt-content.docx", ERROR)]
+    assert "genuine.docx" not in {issue["value"] for issue in kad_issues + mismatch_issues}
 
 
 def test_kost_sample_is_schema_valid(sample_sip):
