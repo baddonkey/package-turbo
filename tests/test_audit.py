@@ -275,7 +275,21 @@ def test_mets_companion_validates_with_fixity_and_resolved_ids(tmp_path, version
     root = etree.fromstring(xml)
     base = Path(__file__).resolve().parent.parent / "ph_backend/resources/preservation"
     schema = base / ("mets2.xsd" if version == "2" else "mets-1.12.1.xsd")
-    etree.XMLSchema(etree.parse(str(schema), etree.XMLParser(no_network=True))).assertValid(root)
+    xlink_url = "http://www.loc.gov/standards/xlink/xlink.xsd"
+    resolved_urls = []
+
+    class LocalXLinkResolver(etree.Resolver):
+        def resolve(self, url, public_id, context):
+            if url == xlink_url:
+                resolved_urls.append(url)
+                return self.resolve_filename(str(base / "xlink.xsd"), context)
+            return None
+
+    parser = etree.XMLParser(no_network=True)
+    parser.resolvers.add(LocalXLinkResolver())
+    etree.XMLSchema(etree.parse(str(schema), parser)).assertValid(root)
+    if version == "1.12.1":
+        assert xlink_url in resolved_urls
     assert root.get("OBJID") == journal.package_identifier
     assert root.get("LABEL").endswith("REDACTED" if redact_values else "FULL")
     reference = root.xpath("//*[local-name()='mdRef']")[0]
