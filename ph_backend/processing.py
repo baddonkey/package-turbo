@@ -11,10 +11,15 @@ from pathlib import Path
 from .audit import AuditError
 
 CHUNK_SIZE = 1024 * 1024
+MAX_METADATA_BYTES = 64 * 1024 * 1024
 _local = threading.local()
 
 
 class TaskCancelled(AuditError):
+    pass
+
+
+class MetadataTooLargeError(AuditError):
     pass
 
 
@@ -275,20 +280,28 @@ def digest_bytes(data: bytes, algorithm: str = "sha256") -> str:
 
 def read_bytes(path: Path) -> bytes:
     path = Path(path)
+    limit = MAX_METADATA_BYTES if path.name.casefold() == "metadata.xml" else None
 
     def read():
         control = current_control()
         _check_path(path, require_file=True)
+        if limit is not None and path.stat().st_size > limit:
+            raise MetadataTooLargeError(f"metadata.xml exceeds the {limit}-byte limit.")
         if control:
             control.start("Read metadata", path.stat().st_size)
         chunks = []
+        total = 0
         with path.open("rb") as stream:
             while True:
                 if control:
                     control.checkpoint()
-                chunk = stream.read(CHUNK_SIZE)
+                read_size = CHUNK_SIZE if limit is None else min(CHUNK_SIZE, limit - total + 1)
+                chunk = stream.read(read_size)
                 if not chunk:
                     break
+                total += len(chunk)
+                if limit is not None and total > limit:
+                    raise MetadataTooLargeError(f"metadata.xml exceeds the {limit}-byte limit.")
                 chunks.append(chunk)
                 if control:
                     control.advance(len(chunk))

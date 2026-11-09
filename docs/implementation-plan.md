@@ -598,9 +598,13 @@ sidecar fixity is computed from the exact exported XML. Existing destinations ar
 This is a local export flow, not a receiving-archive certified transfer workflow.
 
 Canonical payloads use RFC 8785. Each SHA-256 digest covers the previous digest bytes
-followed by the canonical payload. The stored head checks truncation; an independently
-retained `AuditCheckpoint` detects rollback beyond that trusted checkpoint. A privileged
-attacker can rewrite both history and head: this is not a signature or authorship proof.
+followed by the canonical payload. A separately stored, path-bound checkpoint in the user
+profile detects companion-only rewrites and rollback after trust-on-first-use. A pending
+checkpoint state reconciles interruption between SQLite commit and checkpoint finalization.
+First opening of an existing journal registers its current internally valid head; earlier
+integrity is not established. The checkpoint is per-user/per-machine and path-specific, is not
+a digital signature, and does not protect against an attacker who can rewrite both the companion
+and that user's application state. Moving a journal requires a new trust-on-first-use checkpoint.
 
 Keep complete old/new metadata values locally and hashes rather than file contents in events;
 restrict access to the companion. Redacted PREMIS omits event details but retains operator IDs,

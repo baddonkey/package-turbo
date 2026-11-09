@@ -11,7 +11,8 @@ import rfc8785
 from lxml import etree
 
 from .audit import AuditError, AuditJournal
-from .processing import current_control, digest_bytes, protect_commit, read_bytes, run_background
+from .processing import (MAX_METADATA_BYTES, current_control, digest_bytes, protect_commit,
+                         read_bytes, run_background)
 
 
 def companion_directory(package_root: Path) -> Path:
@@ -220,6 +221,8 @@ class MetadataWorkspace:
             raise AuditError("Interrupted metadata commit conflicts with external changes. No files were replaced.")
 
     def save(self, after: bytes, events: list[dict] | None = None) -> bool:
+        if len(after) > MAX_METADATA_BYTES:
+            raise AuditError(f"metadata.xml exceeds the {MAX_METADATA_BYTES}-byte limit.")
         if not self.operator.strip():
             raise AuditError("Confirm an audit operator before saving.")
         for event in events or []:

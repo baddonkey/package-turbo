@@ -4,8 +4,10 @@ import hashlib
 import json
 import os
 import sqlite3
+import sys
+import tempfile
 import uuid
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
@@ -35,10 +37,183 @@ def _digest(previous: str, payload: bytes) -> str:
     return hashlib.sha256(bytes.fromhex(previous) + payload).hexdigest()
 
 
+def _trusted_state_directory() -> Path:
+    configured = os.environ.get("PACKAGE_TURBO_TRUSTED_STATE_DIR")
+    if configured:
+        root = Path(configured)
+    elif os.name == "nt":
+        root = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
+    elif sys.platform == "darwin":
+        root = Path.home() / "Library" / "Application Support"
+    else:
+        root = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state")
+    return root / "PackageTurbo" / "audit-checkpoints"
+
+
+class _TrustedCheckpointStore:
+    def __init__(self, package_identifier: str, journal_path: Path):
+        self.package_identifier = package_identifier
+        self.directory = _trusted_state_directory()
+        location = os.path.normcase(str(Path(journal_path).resolve()))
+        name = hashlib.sha256(location.encode("utf-8")).hexdigest()
+        self.path = self.directory / f"{name}.json"
+        self.lock_path = self.directory / f"{name}.lock"
+
+    @contextmanager
+    def locked(self):
+        self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if os.name != "nt":
+            self.directory.chmod(0o700)
+        with self.lock_path.open("a+b") as lock:
+            if os.name == "nt":
+                import msvcrt
+
+                if lock.tell() == 0:
+                    lock.write(b"\x00")
+                    lock.flush()
+                lock.seek(0)
+                msvcrt.locking(lock.fileno(), msvcrt.LK_LOCK, 1)
+                try:
+                    yield
+                finally:
+                    lock.seek(0)
+                    msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+                try:
+                    yield
+                finally:
+                    fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+    @staticmethod
+    def _entry(value: dict) -> dict:
+        sequence = value.get("sequence")
+        digest = value.get("digest")
+        if (type(sequence) is not int or sequence < 0 or not isinstance(digest, str)
+                or len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest)):
+            raise AuditError("The trusted audit checkpoint is malformed.")
+        return {"sequence": sequence, "digest": digest}
+
+    def _read(self) -> dict | None:
+        if not self.path.exists():
+            return None
+        attributes = getattr(self.path.lstat(), "st_file_attributes", 0)
+        if self.path.is_symlink() or attributes & 0x400 or not self.path.is_file():
+            raise AuditError("The trusted audit checkpoint is not a regular file.")
+        if self.path.stat().st_size > 64 * 1024:
+            raise AuditError("The trusted audit checkpoint exceeds its size limit.")
+        try:
+            value = json.loads(self.path.read_text(encoding="utf-8"))
+            if value.get("version") != 1 or value.get("packageIdentifier") != self.package_identifier:
+                raise AuditError("The trusted audit checkpoint belongs to a different package.")
+            checkpoint = self._entry(value["checkpoint"])
+            pending_value = value.get("pending")
+            pending = None
+            if pending_value is not None:
+                pending = {"before": self._entry(pending_value["before"]),
+                           "after": self._entry(pending_value["after"])}
+                if pending["before"] != checkpoint or pending["before"]["sequence"] >= pending["after"]["sequence"]:
+                    raise AuditError("The pending trusted checkpoint is inconsistent.")
+            return {"version": 1, "packageIdentifier": self.package_identifier,
+                    "checkpoint": checkpoint, "pending": pending}
+        except (OSError, UnicodeError, json.JSONDecodeError, KeyError, TypeError, AttributeError) as exc:
+            raise AuditError("The trusted audit checkpoint cannot be read.") from exc
+
+    def _write(self, checkpoint: dict, pending: dict | None = None) -> None:
+        state = {"version": 1, "packageIdentifier": self.package_identifier,
+                 "checkpoint": self._entry(checkpoint), "pending": pending}
+        data = json.dumps(state, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(dir=self.directory, prefix=".checkpoint-", suffix=".tmp",
+                                             delete=False) as stream:
+                temporary = Path(stream.name)
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+            if os.name != "nt":
+                temporary.chmod(0o600)
+            os.replace(temporary, self.path)
+            if os.name != "nt":
+                descriptor = os.open(self.directory, os.O_RDONLY)
+                try:
+                    os.fsync(descriptor)
+                finally:
+                    os.close(descriptor)
+        except OSError as exc:
+            raise AuditError("The trusted audit checkpoint could not be saved.") from exc
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+
+    def reconcile(self, current: AuditCheckpoint) -> None:
+        actual = {"sequence": current.sequence, "digest": current.digest}
+        state = self._read()
+        if state is None:
+            self._write(actual)
+            return
+        pending = state["pending"]
+        if pending is not None:
+            if actual == pending["before"]:
+                self._write(pending["before"])
+                return
+            if actual == pending["after"]:
+                self._write(pending["after"])
+                return
+            raise AuditError("The audit journal conflicts with its pending trusted checkpoint.")
+        if actual != state["checkpoint"]:
+            raise AuditError("The audit journal does not match its trusted checkpoint.")
+
+    def prepare(self, before: AuditCheckpoint, after: AuditCheckpoint) -> None:
+        state = self._read()
+        previous = {"sequence": before.sequence, "digest": before.digest}
+        following = {"sequence": after.sequence, "digest": after.digest}
+        if (before.package_identifier != self.package_identifier
+                or after.package_identifier != self.package_identifier
+                or state is None or state["pending"] is not None or state["checkpoint"] != previous):
+            raise AuditError("The audit journal changed before its trusted checkpoint could advance.")
+        self._write(previous, {"before": previous, "after": following})
+
+    def current(self) -> AuditCheckpoint:
+        state = self._read()
+        if state is None or state["pending"] is not None:
+            raise AuditError("The trusted audit checkpoint needs reconciliation before writing.")
+        checkpoint = state["checkpoint"]
+        return AuditCheckpoint(self.package_identifier, checkpoint["sequence"], checkpoint["digest"])
+
+    def finalize(self, checkpoint: AuditCheckpoint) -> None:
+        state = self._read()
+        following = {"sequence": checkpoint.sequence, "digest": checkpoint.digest}
+        if state is None or state["pending"] is None or state["pending"]["after"] != following:
+            raise AuditError("The pending trusted checkpoint cannot be finalized.")
+        self._write(following)
+
+
+class _CheckpointedConnection(sqlite3.Connection):
+    def commit(self):
+        store = getattr(self, "checkpoint_store", None)
+        journal = getattr(self, "journal", None)
+        if store is None or journal is None:
+            return super().commit()
+        header, _ = journal._verify(self, enforce_trusted=False)
+        after = AuditCheckpoint(header["package_identifier"], header["sequence"], header["digest"])
+        before = store.current()
+        if before == after:
+            return super().commit()
+        if after.sequence <= before.sequence:
+            raise AuditError("The audit journal cannot move behind its trusted checkpoint.")
+        store.prepare(before, after)
+        super().commit()
+        store.finalize(after)
+
+
 class AuditJournal:
     def __init__(self, path: Path, package_identifier: str | None = None, read_only: bool = False):
         self.path = Path(path).resolve()
         self.read_only = read_only
+        self._checkpoint_store = None
         if package_identifier is not None and not package_identifier.strip():
             raise AuditError("A package identifier must not be empty.")
         if not self.path.exists():
@@ -76,23 +251,31 @@ class AuditJournal:
         self.package_identifier = header["package_identifier"]
         if package_identifier is not None and self.package_identifier != package_identifier:
             raise AuditError("The journal belongs to a different package.")
+        self._checkpoint_store = _TrustedCheckpointStore(self.package_identifier, self.path)
+        with self._connection("ro") as connection:
+            self._verify(connection)
 
     @contextmanager
     def _connection(self, mode: str):
         connection = None
-        try:
-            connection = sqlite3.connect(self.path.as_uri() + "?mode=" + mode, uri=True, timeout=10)
-            connection.row_factory = sqlite3.Row
-            connection.execute("PRAGMA synchronous=FULL")
-            connection.execute("BEGIN" if mode == "ro" else "BEGIN IMMEDIATE")
-            yield connection
-        except sqlite3.Error as exc:
-            raise AuditError(f"Audit journal operation failed: {exc}") from exc
-        finally:
-            if connection is not None:
-                connection.close()
+        lock = self._checkpoint_store.locked() if self._checkpoint_store is not None else nullcontext()
+        with lock:
+            try:
+                connection = sqlite3.connect(self.path.as_uri() + "?mode=" + mode, uri=True, timeout=10,
+                                             factory=_CheckpointedConnection)
+                connection.checkpoint_store = self._checkpoint_store
+                connection.journal = self
+                connection.row_factory = sqlite3.Row
+                connection.execute("PRAGMA synchronous=FULL")
+                connection.execute("BEGIN" if mode == "ro" else "BEGIN IMMEDIATE")
+                yield connection
+            except sqlite3.Error as exc:
+                raise AuditError(f"Audit journal operation failed: {exc}") from exc
+            finally:
+                if connection is not None:
+                    connection.close()
 
-    def _verify(self, connection, checkpoint: AuditCheckpoint | None = None):
+    def _verify(self, connection, checkpoint: AuditCheckpoint | None = None, enforce_trusted: bool = True):
         header = connection.execute("SELECT * FROM journal WHERE id=1").fetchone()
         if header is None or header["format_version"] != FORMAT_VERSION:
             raise AuditError("Unsupported or missing audit journal header.")
@@ -121,6 +304,9 @@ class AuditJournal:
             raise AuditError("The audit journal head does not match its events.")
         if not checkpoint_found:
             raise AuditError("The audit journal does not match the trusted checkpoint.")
+        if enforce_trusted and self._checkpoint_store is not None:
+            self._checkpoint_store.reconcile(AuditCheckpoint(
+                header["package_identifier"], header["sequence"], header["digest"]))
         return header, records
 
     def verify(self, checkpoint: AuditCheckpoint | None = None) -> AuditCheckpoint:
@@ -145,6 +331,8 @@ class AuditJournal:
     def append_many(self, events: list[dict]) -> list[dict]:
         if self.read_only:
             raise AuditError("The audit journal is read-only.")
+        if not events:
+            return []
         with self._connection("rw") as connection:
             self._verify(connection)
             records = [self._append(connection, **event) for event in events]

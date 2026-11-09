@@ -648,6 +648,14 @@ den Wiederherstellungszustand. Er gehört nicht in `header` oder `content`. Die 
 enthält auch frühere, möglicherweise vertrauliche Werte: schützen Sie diesen Ordner
 und bewahren Sie ihn beim Weitergeben einer Arbeitskopie separat auf. Automatisches
 Zuordnen nach einem Umbenennen oder Kopieren des Pakets ist noch nicht umgesetzt.
+Ein zusätzlicher Prüfpunkt für den Journalstand liegt getrennt davon im Benutzerprofil und
+ist an den lokalen Journalpfad gebunden. Beim ersten Öffnen wird der aktuell gültige
+Journalstand als Ausgangspunkt registriert; eine davor liegende Bearbeitungsgeschichte wird
+nicht bestätigt. Danach erkennt Package Turbo Änderungen oder Rücksetzungen am Begleitjournal,
+solange der getrennte Prüfpunkt unverändert bleibt. Der Prüfpunkt ist kein digitaler Signaturnachweis:
+wer auch die Anwendungsdaten des Benutzerprofils ändern kann, kann beide Stände ersetzen.
+Nach dem Verschieben oder Kopieren auf einen anderen lokalen Pfad wird ein neuer Ausgangspunkt
+registriert; der alte Prüfpunkt wird nicht automatisch übertragen.
 Bei einem bereits vorhandenen SIP wird beim ersten schreibenden Zugriff der aktuelle Stand
 mit Prüfsummen registriert; eine davor liegende Bearbeitungsgeschichte wird nicht erfunden.
 
