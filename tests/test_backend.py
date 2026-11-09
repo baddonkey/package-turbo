@@ -40,6 +40,17 @@ def test_appearance_theme_setting_defaults_to_system_and_persists(backend):
     assert backend.themeMode == "system"
 
 
+def test_incoming_file_reference_setting_defaults_off_and_persists(backend):
+    from PySide6.QtCore import QSettings
+
+    assert backend.showIncomingFileReferences is False
+    backend.showIncomingFileReferences = True
+    backend._settings.sync()
+    restored = Backend(QSettings(backend._settings.fileName(), QSettings.Format.IniFormat))
+    assert restored.showIncomingFileReferences is True
+    restored.shutdown()
+
+
 def test_open_edit_save_cycle(opened, sip_dir):
     backend = opened
     assert backend.hasPackage and not backend.dirty
@@ -373,6 +384,38 @@ def test_native_creation_dialog_renders_version_choices(backend, app, tmp_path, 
     assert preferences.findChild(QObject, "workspaceLimit").property("value") == backend.workspaceLimitGiB
     assert preferences.findChild(QObject, "retentionCopies").property("value") == backend.retentionCopies
     assert preferences.findChild(QObject, "retentionAge").property("value") == backend.retentionAgeDays
+    incoming_references_check = preferences.findChild(QObject, "showIncomingFileReferencesCheck")
+    assert incoming_references_check is not None
+    assert incoming_references_check.property("checked") is False
+    preferences_scrollbar = preferences.findChild(QQuickItem, "preferencesVerticalScrollBar")
+    assert preferences_scrollbar is not None and preferences_scrollbar.isVisible()
+    scroll_left = preferences_scrollbar.parentItem().mapToScene(QPointF(0, 0)).x()
+    scroll_right = scroll_left + preferences_scrollbar.parentItem().width()
+    scrollbar_right = preferences_scrollbar.mapToScene(QPointF(preferences_scrollbar.width(), 0)).x()
+    assert abs(scrollbar_right - scroll_right) <= 1
+    theme_box = preferences.findChild(QQuickItem, "themeModeBox")
+    appearance_group = preferences.findChild(QQuickItem, "appearancePreferencesGroup")
+    references_group = preferences.findChild(QQuickItem, "incomingReferencesPreferencesGroup")
+    history_group = preferences.findChild(QQuickItem, "metadataHistoryPreferencesGroup")
+    appearance_bottom = appearance_group.mapToScene(QPointF(0, appearance_group.height())).y()
+    references_top = references_group.mapToScene(QPointF(0, 0)).y()
+    references_bottom = references_group.mapToScene(QPointF(0, references_group.height())).y()
+    history_top = history_group.mapToScene(QPointF(0, 0)).y()
+    assert references_top >= appearance_bottom - 1
+    assert history_top >= references_bottom - 1
+    assert incoming_references_check.isVisible()
+    preferences_scroll = preferences.findChild(QQuickItem, "preferencesScrollView")
+    assert preferences_scroll.property("contentHeight") > preferences_scroll.height()
+    scroll_content = preferences_scroll.property("contentItem")
+    scroll_content.setProperty("contentY", scroll_content.property("contentHeight") - scroll_content.height())
+    app.processEvents()
+    language_box = preferences.findChild(QQuickItem, "languageBox")
+    language_top = language_box.mapToScene(QPointF(0, 0)).y()
+    scroll_top = preferences_scroll.mapToScene(QPointF(0, 0)).y()
+    assert scroll_top <= language_top < scroll_top + preferences_scroll.height()
+    scroll_content.setProperty("contentY", 0)
+    app.processEvents()
+    incoming_references_check.setProperty("checked", True)
     theme_choices = preferences.findChild(QObject, "themeModeBox")
     assert theme_choices.property("count") == 3
     assert theme_choices.property("currentIndex") == 0
@@ -380,6 +423,7 @@ def test_native_creation_dialog_renders_version_choices(backend, app, tmp_path, 
     assert QMetaObject.invokeMethod(preferences, "accept")
     app.processEvents()
     assert backend.themeMode == "dark"
+    assert backend.showIncomingFileReferences is True
     assert window.property("darkMode") is True
     backend.themeMode = "system"
     app.processEvents()
@@ -510,8 +554,14 @@ def test_native_creation_dialog_renders_version_choices(backend, app, tmp_path, 
     content = next(element for element in modern.iter_kind("ordner") if modern.text(element, "name") == "content")
     reference_source = tmp_path / "native-reference.txt"
     reference_source.write_bytes(b"native reference")
-    files.import_paths(modern, content, [reference_source])
-    structure_ops.assign_files(modern, document, modern.children(content, "datei"))
+    unused_source = tmp_path / "native-unreferenced.txt"
+    unused_source.write_bytes(b"unreferenced file")
+    files.import_paths(modern, content, [reference_source, unused_source])
+    file_element = next(file_element for file_element in modern.children(content, "datei")
+                        if modern.text(file_element, "name") == reference_source.name)
+    unused_file_element = next(file_element for file_element in modern.children(content, "datei")
+                                if modern.text(file_element, "name") == unused_source.name)
+    structure_ops.assign_files(modern, document, [file_element])
     modern.save()
     assert backend.set_package(modern)
     app.processEvents()
@@ -528,6 +578,15 @@ def test_native_creation_dialog_renders_version_choices(backend, app, tmp_path, 
                 return found
         return None
 
+    def visible_visual_item(parent, name):
+        if parent.objectName() == name and parent.isVisible():
+            return parent
+        for child in parent.childItems():
+            found = visible_visual_item(child, name)
+            if found is not None:
+                return found
+        return None
+
     window.grabWindow()
     more = visual_item(window.contentItem(), "moreFields-" + str(modern.key(document)))
     assert more is not None
@@ -539,12 +598,81 @@ def test_native_creation_dialog_renders_version_choices(backend, app, tmp_path, 
     assert QMetaObject.invokeMethod(author, "editingFinished")
     app.processEvents()
     assert modern.repeated_texts(document, "autor") == ["Native edited author", "Author two"]
-    reference_attribute = visual_item(window.contentItem(), "referenceAttribute-version-0")
-    assert reference_attribute is not None and not reference_attribute.property("readOnly")
-    reference_attribute.setProperty("text", "2")
-    assert QMetaObject.invokeMethod(reference_attribute, "editingFinished")
+    assert visual_item(window.contentItem(), "references-" + str(modern.key(document))) is None
+    assert modern.children(document, "dateiRef")[0].get("version") is None
+    backend.select(modern.key(unused_file_element))
     app.processEvents()
-    assert modern.children(document, "dateiRef")[0].get("version") == "2"
+    empty_message = visible_visual_item(window.contentItem(), "incomingReferencesEmptyMessage")
+    assert empty_message is not None
+    assert window.grabWindow().save(str(tmp_path / "incoming-reference-empty-state.png"))
+    assert empty_message.isVisible(), (
+        empty_message.property("visible"), empty_message.parentItem().isVisible(), backend.editor.currentTab,
+        backend.showIncomingFileReferences, backend.editor.incomingReferenceAttributes(modern.key(unused_file_element)))
+    target_options = backend.editor.incomingReferenceTargets(modern.key(unused_file_element))
+    document_option = next(option for option in target_options if option["ownerKey"] == modern.key(document))
+    target_picker = visual_item(window.contentItem(), "incomingReferenceTarget-" + str(modern.key(unused_file_element)))
+    add_reference_button = visual_item(window.contentItem(), "addIncomingReferenceButton-"
+                                       + str(modern.key(unused_file_element)))
+    assert target_picker is not None and add_reference_button is not None
+    assert target_picker.property("currentIndex") == 0
+    assert add_reference_button.property("enabled") is False
+    target_picker.setProperty("currentIndex", target_options.index(document_option) + 1)
+    assert add_reference_button.property("enabled") is True
+    assert QMetaObject.invokeMethod(add_reference_button, "clicked")
+    app.processEvents()
+    document_references = modern.children(document, "dateiRef")
+    assert [reference.text for reference in document_references] == [
+        file_element.get("id"), unused_file_element.get("id")]
+    additional_target = next(option for option in backend.editor.incomingReferenceTargets(
+        modern.key(unused_file_element)) if option["ownerKey"] == modern.key(document))
+    assert additional_target["hasReference"] is True
+    target_picker = visual_item(window.contentItem(),
+                                "incomingReferenceTarget-" + str(modern.key(unused_file_element)))
+    add_reference_button = visual_item(window.contentItem(),
+                                       "addIncomingReferenceButton-" + str(modern.key(unused_file_element)))
+    assert target_picker.property("currentIndex") == 0
+    target_picker.setProperty("currentIndex", 1)
+    assert add_reference_button.property("text") == "Weitere Referenz hinzufügen"
+    assert QMetaObject.invokeMethod(add_reference_button, "clicked")
+    app.processEvents()
+    document_references = modern.children(document, "dateiRef")
+    assert [reference.text for reference in document_references] == [
+        file_element.get("id"), unused_file_element.get("id"), unused_file_element.get("id")]
+    second_version = visual_item(window.contentItem(),
+                                  "referenceAttribute-version-2-owner-" + str(modern.key(document)))
+    assert second_version is not None
+    second_version.setProperty("text", "2")
+    assert QMetaObject.invokeMethod(second_version, "editingFinished")
+    app.processEvents()
+    assert document_references[1].get("version", "") == ""
+    assert document_references[2].get("version") == "2"
+    backend.select(modern.key(file_element))
+    app.processEvents()
+    incoming_group = visual_item(window.contentItem(), "incomingReferences-" + str(modern.key(file_element)))
+    assert incoming_group is not None
+    owner_label = visual_item(window.contentItem(),
+                              "incomingReferenceOwner-" + str(modern.key(document)) + "-0")
+    assert owner_label is not None and "Dokument" in owner_label.property("text")
+    incoming_version = visual_item(window.contentItem(),
+                                   "referenceAttribute-version-0-owner-" + str(modern.key(document)))
+    assert incoming_version is not None and incoming_version.property("text") == ""
+    incoming_version.setProperty("text", "3")
+    assert QMetaObject.invokeMethod(incoming_version, "editingFinished")
+    app.processEvents()
+    assert modern.children(document, "dateiRef")[0].get("version") == "3"
+    assert window.grabWindow().save(str(tmp_path / "incoming-file-references.png"))
+    backend.select(modern.key(document))
+    app.processEvents()
+    assert visual_item(window.contentItem(), "references-" + str(modern.key(document))) is None
+    assert modern.children(document, "dateiRef")[0].get("version") == "3"
+    backend.showIncomingFileReferences = False
+    backend.select(modern.key(file_element))
+    app.processEvents()
+    incoming_group = visual_item(window.contentItem(), "incomingReferences-" + str(modern.key(file_element)))
+    assert incoming_group is not None and not incoming_group.isVisible()
+    backend.showIncomingFileReferences = True
+    backend.select(modern.key(document))
+    app.processEvents()
     assert visual_item(window.contentItem(), "repeatedValue-autor-0") is not None
     window.setProperty("maximized", "editor")
     app.processEvents()

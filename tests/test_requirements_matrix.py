@@ -12,6 +12,21 @@ def test_normative_matrix_tracks_all_release_requirement_ids():
     assert len(rows) == 60
     assert len({row["requirement_id"] for row in rows}) == len(rows)
     assert {row["level"] for row in rows} == {"M", "K"}
+    assert {row["scope_decision"] for row in rows} <= {"address", "defer", "out-of-scope"}
+    assert all(row["decision_rationale"].strip() for row in rows)
+    assert sum(row["scope_decision"] == "address" for row in rows) == 59
+    assert sum(row["scope_decision"] == "out-of-scope" for row in rows) == 1
+    release_columns = [("in_1_0", "1.0"), ("in_1_1", "1.1"), ("in_1_2_0", "1.2.0"), ("in_1_3_0", "1.3.0")]
+    for row in rows:
+        if row["scope_decision"] != "address":
+            continue
+        strength = "mandatory" if row["level"] == "M" else "recommended"
+        profile = "all profiles" if row["profile_scope"] == "all" else f"the {row['profile_scope']} profile"
+        releases = ", ".join(version for column, version in release_columns if row[column] == "true")
+        rationale = row["decision_rationale"]
+        assert f"Address: this {strength} requirement applies to {profile} in eCH-0160 {releases}" in rationale
+        assert f"current {row['assessment']} evidence is not a conformance claim" in rationale
+        assert "Reopen only if the source clause or applicability changes" in rationale
     assert {row["assessment"] for row in rows} <= {
         "not-assessed", "partial-presence-verified", "partial-sip-roundtrip-verified",
         "partial-dossier-rule-verified", "partial-limit-verified", "partial-character-set-verified",
@@ -65,6 +80,7 @@ def test_normative_matrix_distinguishes_profiles_and_known_slices():
     assert rows["M_4.8-3"]["assessment"] == "partial-files-layout-classification-roundtrip-verified"
     assert rows["M_4.8-4"]["assessment"] == "partial-files-integrated-doc-simple-classification-verified"
     assert rows["T_6.1-1"]["assessment"] == "out-of-scope"
+    assert rows["T_6.1-1"]["scope_decision"] == "out-of-scope"
     assert rows["S_5.7-2"]["assessment"] == "partial-files-name-path-rules-verified"
     assert rows["S_5.7-3"]["assessment"] == "partial-files-grouping-assignment-roundtrip-verified"
     assert rows["S_5.6-1"]["assessment"] == "partial-gever-folder-dossier-mass-assign-verified"

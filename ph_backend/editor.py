@@ -191,6 +191,22 @@ class MetadataEditor(QObject):
         self.currentTabChanged.emit()
         self.contentChanged.emit()
 
+    @Slot(int, result="QVariantList")
+    def incomingReferenceAttributes(self, key: int) -> list:
+        pkg = self._pkg
+        file_el = pkg.element(key) if pkg is not None else None
+        if file_el is None or pkg.kind(file_el) != "datei":
+            return []
+        return pkg.incoming_reference_attributes(file_el)
+
+    @Slot(int, result="QVariantList")
+    def incomingReferenceTargets(self, key: int) -> list:
+        pkg = self._pkg
+        file_el = pkg.element(key) if pkg is not None else None
+        if file_el is None or pkg.kind(file_el) != "datei":
+            return []
+        return pkg.reference_targets(file_el)
+
     def _editable_element(self, key: int):
         pkg = self._pkg
         el = pkg.element(key) if pkg else None

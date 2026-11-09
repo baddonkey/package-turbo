@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "package-turbo"
 version = "0.1.0"
 description = "Package Turbo - desktop workspace for eCH-0160 Submission Information Packages with PySide6 and QML."
+license = "MIT"
 requires-python = ">=3.11"
 dependencies = [
     "PySide6>=6.9",

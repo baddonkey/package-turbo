@@ -93,9 +93,9 @@ untouched source copy.
 
 Sample SIPs are available from [KOST/CECO](https://kost-ceco.ch/cms/ech-0160-archivische-ablieferungsschnittstelle.html).
 
-## Third-Party Packages
-* https://github.com/digital-preservation/droid
+## License and Third-Party Notices
 
-## Icon resources
-
-See https://lucide.dev/icons
+Package Turbo's original code is provided under the MIT License; see [LICENSE](LICENSE).
+Third-party packages, tools, icons, schemas and sample-material notices are listed in
+[THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md). Their terms remain separate from the
+project license.

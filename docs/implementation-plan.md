@@ -8,17 +8,42 @@ web application. No commits, pushes or history rewrites without explicit approva
 
 The seven milestones below are historical implementation snapshots, not a declaration that
 all release requirements are complete. The current UI has persistent System/Light/Dark themes,
-palette-aware menus, dialogs and icons, responsive action tabs, and full-text access for
-truncated values. The native QML tests exercise theme changes, menu states, recent names,
-tab clicks/scrolling, dialog contrast and badge contrast. Visual and accessibility qualification
-across platforms, display scales, languages and complete workflows remains a release task.
+palette-aware menus, dialogs and icons, responsive action tabs, full-text access for truncated
+values, and an opt-in incoming `dateiRef` view on selected files (off by default). Incoming links
+retain their owning object and reference index so edits update the original relationship. Native
+tests cover preference persistence, file-side reference display, nested content paths, shared
+IDREFS targets, schema-version attribute availability, schema-filtered target selection with
+profile-aware repeated-reference rules, reference creation, and edits routed to the original owner.
+The file-side view is a grid; reference attributes are not duplicated in dossier/document sections.
+Visual and accessibility qualification across platforms, display scales, languages and complete
+workflows remains a release task.
 
 The normative matrix currently contains 59 partially assessed requirements and one out-of-scope
 transfer-container requirement. The dictionary presence tests do not establish full semantic
 coverage. Current outstanding work includes complete standard/profile coverage, preservation
 identity and event modeling, performance qualification, translations, native releases and rights
-review; details are in Remaining Milestones. The last full local suite recorded 550 passing tests;
-individual milestone counts below are historical snapshots.
+review; details are in Remaining Milestones. The previous full suite recorded 550 passing tests.
+The current full suite passes 562 tests with one malformed local v1.2 FILES sample case
+deselected: its stored SHA-1 value is 32 characters while the referenced file's computed SHA-1
+is 40 characters. Individual milestone counts below are historical snapshots.
+
+### Decision Tracking
+
+`docs/ech0160-requirements.csv` is the canonical per-requirement decision register. The
+`scope_decision` values are `address`, `defer`, or `out-of-scope`; `decision_rationale` records
+why. These fields record scope, not implementation completion. `assessment` and `test_evidence`
+track verification separately. Current disposition: address the 59 in-scope requirements; keep
+T_6.1-1 out of scope because transfer-container use is optional and requires receiving-archive
+agreement. Reopen a recorded decision only if the normative source changes, new evidence
+contradicts its rationale, product scope changes, or a legal/distribution constraint requires it.
+Record the trigger and revised rationale in that same row; do not repeat completed assessments
+without a trigger.
+
+The malformed local v1.2 FILES fixture is tracked separately from standards disposition. Decision:
+do not modify sample bytes or relax checksum validation. Keep the affected local sample test
+deselected until the sample is compared with its original published source. If the published
+artifact itself has the malformed checksum, document it as a fixture exception rather than
+changing general checksum behavior. Revisit only when source or provenance evidence changes.
 
 ## First Milestone
 
@@ -329,7 +354,8 @@ valid. The corresponding [version 1.0](https://www.ech.ch/de/ech/ech-0160/1.0),
 
 The first-pass [normative requirements matrix](ech0160-requirements.csv) lists 60 actual
 requirements from the v1.3.0 specification, with clause page, MUST/SHOULD level, profile scope,
-short summary, candidate code surface and test-evidence field. The `in_1_*` columns indicate
+short summary, candidate code surface, explicit scope decision/rationale and test-evidence
+assessment. The `in_1_*` columns indicate
 only whether an identifier occurs in each older PDF: they do not prove that the clause text or
 meaning stayed unchanged. The example ID in the specification's notation section is excluded.
 Fifty-nine rows are partially verified: A_2.5-1 tests one/two sibling SIP roots opening independently with shared-parent rejection across all four releases; M_4.2-1 tests the core package metadata model and selected XSD roundtrip across all release/profile combinations; M_4.2-2 tests the GEVER/FILES creation selector and matching metadata roundtrips across all eight release/profile combinations; M_4.8-1 verifies three package-creation source mappings across eight release/profile combinations; M_4.8-4 tests simple FILES integrated-documentation classification, SIARD assignment, and the missing-dossier negative across four releases; P_3.2-1 tests DROID-PUID KaD ratings for ODT/DOCX; P_3.2-2 has a mocked DROID CSV contract and a real PDF-as-TXT mismatch test;

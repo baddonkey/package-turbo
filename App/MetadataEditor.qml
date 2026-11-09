@@ -397,9 +397,8 @@ Pane {
                             }
                             ReferenceAttributesEditor {
                                 Layout.fillWidth: true
-                                visible: section.modelData.references.length > 0
+                                visible: section.modelData.kind === "datei" && backend.showIncomingFileReferences
                                 elementKey: section.modelData.key
-                                references: section.modelData.references
                                 editable: !editor.readOnly && !section.modelData.readOnly
                             }
                         }

@@ -447,6 +447,101 @@ class SipPackage:
                            "attributes": attributes})
         return result
 
+    def incoming_reference_attributes(self, file_el) -> list[dict]:
+        if self.kind(file_el) != "datei":
+            return []
+        file_id = file_el.get("id", "")
+        if not file_id:
+            return []
+
+        info = xsd_info.for_package(self)
+        result = []
+        for owner in self.root.iter():
+            references = self.children(owner, "dateiRef")
+            if not references:
+                continue
+            owner_kind = self.kind(owner)
+            definition = info.element(xsd_info.type_name(self, owner, info), "dateiRef")
+            allowed = info.attributes(definition.type) if definition is not None else []
+            known = {attribute.name for attribute in allowed}
+            owner_elements = [ancestor for ancestor in self.ancestors(owner) + [owner]
+                              if self.kind(ancestor) in ("ordnungssystemposition", "dossier", "subdossier",
+                                                        "dokument", "mappe", "vorgang", "aktivitaet")]
+            owner_context = " / ".join(
+                f"{schema.KIND_LABELS.get(self.kind(element), self.kind(element))}: {self.display_name(element)}"
+                for element in owner_elements)
+            for index, reference in enumerate(references):
+                identifiers = (reference.text or "").split()
+                if file_id not in identifiers:
+                    continue
+                attributes = [{"name": attribute.name, "value": reference.get(attribute.name, ""),
+                               "editable": True, "required": attribute.required} for attribute in allowed]
+                attributes.extend({"name": name, "value": value, "editable": False, "required": False}
+                                  for name, value in reference.attrib.items() if name not in known)
+                names = []
+                for identifier in identifiers:
+                    target = self.file_by_id(identifier)
+                    names.append(self.display_name(target) if target is not None else identifier)
+                result.append({
+                    "ownerKey": self.key(owner),
+                    "ownerKind": owner_kind,
+                    "ownerKindLabel": schema.KIND_LABELS.get(owner_kind, owner_kind),
+                    "ownerName": self.display_name(owner),
+                    "ownerContext": owner_context,
+                    "index": index,
+                    "fileIds": identifiers,
+                    "fileId": " ".join(identifiers),
+                    "name": ", ".join(names),
+                    "attributes": attributes,
+                })
+        return result
+
+    def reference_targets(self, file_el) -> list[dict]:
+        if self.kind(file_el) != "datei":
+            return []
+        file_id = file_el.get("id", "")
+        if not file_id:
+            return []
+
+        info = xsd_info.for_package(self)
+        result = []
+        owner_kinds = {"ablieferung", "ordnungssystem", "ordnungssystemposition", "dossier", "subdossier",
+                        "dokument", "mappe", "vorgang", "aktivitaet"}
+        for owner in self.root.iter():
+            if not isinstance(owner.tag, str):
+                continue
+            owner_kind = self.kind(owner)
+            if owner_kind not in owner_kinds:
+                continue
+            definition = info.element(xsd_info.type_name(self, owner, info), "dateiRef")
+            if definition is None:
+                continue
+            references = self.children(owner, "dateiRef")
+            has_reference = any(file_id in (reference.text or "").split() for reference in references)
+            if has_reference and not self.can_repeat_reference_target(owner):
+                continue
+            if definition.max_occurs is not None and len(references) >= definition.max_occurs:
+                continue
+            owner_elements = [ancestor for ancestor in self.ancestors(owner) + [owner]
+                              if self.kind(ancestor) in owner_kinds]
+            owner_context = " / ".join(
+                f"{schema.KIND_LABELS.get(self.kind(element), self.kind(element))}: {self.display_name(element)}"
+                for element in owner_elements)
+            result.append({
+                "ownerKey": self.key(owner),
+                "ownerKind": owner_kind,
+                "ownerKindLabel": schema.KIND_LABELS.get(owner_kind, owner_kind),
+                "ownerName": self.display_name(owner),
+                "ownerContext": owner_context,
+                "hasReference": has_reference,
+                "label": owner_context + (" (weitere Referenz)" if has_reference else ""),
+            })
+        return result
+
+    def can_repeat_reference_target(self, owner) -> bool:
+        """Whether this delivery profile's schema permits repeating a file ID on this owner."""
+        return self.delivery_type.upper() == "GEVER" and self.kind(owner) == "dokument"
+
     def set_reference_attribute(self, owner, index: int, name: str, value: str) -> None:
         info = xsd_info.for_package(self)
         definition = info.element(xsd_info.type_name(self, owner, info), "dateiRef")

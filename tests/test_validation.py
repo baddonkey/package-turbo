@@ -498,26 +498,28 @@ def test_encrypted_pdf_is_reported_as_primary_file(tmp_path):
     assert encrypted == {"encrypted.pdf", "encrypted.zip"}
 
 
-def test_encrypted_ooxml_container_is_reported_without_flagging_ordinary_office(tmp_path, monkeypatch):
+def test_encrypted_ooxml_container_is_reported_without_flagging_ordinary_office(tmp_path):
+    from io import BytesIO
+    from zipfile import ZipFile
     import msoffcrypto
-    from pathlib import Path
+    from msoffcrypto.format.ooxml import OOXMLFile
     from ph_backend import files, package_factory
 
     pkg = package_factory.create_package(tmp_path, "SIP_20261107_Test_EncryptedOffice", "Test")
     content = next(folder for folder in pkg.iter_kind("ordner") if pkg.text(folder, "name") == "content")
     protected = tmp_path / "protected.docx"
-    ordinary = tmp_path / "ordinary.doc"
-    protected.write_bytes(b"mock Office container")
-    ordinary.write_bytes(b"mock Office container")
-
-    class OfficeFile:
-        def __init__(self, stream):
-            self.path = Path(stream.name)
-
-        def is_encrypted(self):
-            return self.path.name == "protected.docx"
-
-    monkeypatch.setattr(msoffcrypto, "OfficeFile", OfficeFile)
+    ordinary = tmp_path / "ordinary.docx"
+    plain_package = BytesIO()
+    with ZipFile(plain_package, "w") as archive:
+        archive.writestr(
+            "[Content_Types].xml",
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>',
+        )
+    plain_bytes = plain_package.getvalue()
+    encrypted_package = BytesIO()
+    OOXMLFile(BytesIO(plain_bytes)).encrypt("test-password", encrypted_package)
+    protected.write_bytes(encrypted_package.getvalue())
+    ordinary.write_bytes(plain_bytes)
     files.import_paths(pkg, content, [protected, ordinary])
 
     issues = Validator(pkg).run(full=True)

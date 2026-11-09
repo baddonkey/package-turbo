@@ -134,6 +134,18 @@ class StructureController(_Controller):
             self.backend.after_change(f"{count} Datei(en) zugewiesen", target_key)
         return count or 0
 
+    @Slot(int, int, result=bool)
+    def addFileReference(self, file_key: int, target_key: int) -> bool:
+        file_el, target = self._elements([file_key]), self._elements([target_key])
+        if not file_el or not target:
+            return False
+        added = self._run("Dateiverweis hinzufügen",
+                          lambda pkg: structure.add_file_reference(pkg, target[0], file_el[0]))
+        if added:
+            self.backend.after_change("Dateiverweis hinzugefügt", target_key)
+            return True
+        return False
+
     @Slot(int, int)
     def documentForFile(self, owner_key: int, file_key: int) -> None:
         owner, file_el = self._elements([owner_key]), self._elements([file_key])
