@@ -77,6 +77,8 @@ def test_normative_matrix_distinguishes_profiles_and_known_slices():
     assert rows["M_4.4-1"]["assessment"] == "partial-files-entity-type-consistency-verified"
     assert rows["M_4.4-2"]["assessment"] == "partial-files-relationships-verified"
     assert rows["M_4.4-3"]["assessment"] == "partial-files-classification-verified"
+    assert "test_core_metadata_graph_roundtrips_by_release" in rows["M_4.2-1"]["test_evidence"]
+    assert "representative graph only" in rows["M_4.2-1"]["test_evidence"]
     assert rows["M_4.8-3"]["assessment"] == "partial-files-layout-classification-roundtrip-verified"
     assert rows["M_4.8-4"]["assessment"] == "partial-files-integrated-doc-simple-classification-verified"
     assert rows["T_6.1-1"]["assessment"] == "out-of-scope"

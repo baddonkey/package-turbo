@@ -207,18 +207,32 @@ def test_creation_preserves_selected_schema_version(tmp_path, version, schema_ve
 @pytest.mark.parametrize("version,schema_version", [
     ("1.0", "4.0"), ("1.1", "4.1"), ("1.2", "5.0"), ("1.3", "5.1")])
 @pytest.mark.parametrize("delivery_type", ["GEVER", "FILES"])
-def test_minimal_package_model_roundtrips_by_release(tmp_path, version, schema_version, delivery_type):
+def test_core_metadata_graph_roundtrips_by_release(tmp_path, version, schema_version, delivery_type):
     pkg = package_factory.create_package(
         tmp_path, f"SIP_20261108_Test_Model_{version}_{delivery_type}", "Test",
         version=version, delivery_type=delivery_type)
     expected_type = "ablieferungGeverSIP" if delivery_type == "GEVER" else "ablieferungFilesSIP"
     xsi_type = "{http://www.w3.org/2001/XMLSchema-instance}type"
+    position = next(pkg.iter_kind("ordnungssystemposition"))
+    dossier = structure.add_objects(pkg, position, "dossier", title="Model dossier")[0]
+    document = structure.add_objects(pkg, dossier, "dokument", title="Model document")[0]
+    content = next(folder for folder in pkg.iter_kind("ordner") if pkg.text(folder, "name") == "content")
+    source = tmp_path / "model.txt"
+    source.write_text("model graph", encoding="utf-8")
+    files.import_paths(pkg, content, [source])
+    file_element = pkg.children(content, "datei")[0]
+    assert structure.assign_files(pkg, document, [file_element]) == 1
+    file_id = file_element.get("id")
+    document_id = document.get("id")
 
     assert pkg.kind(pkg.root) == "paket"
     assert pkg.delivery is not None and pkg.delivery.get(xsi_type) == expected_type
     assert pkg.provenance.getparent() is pkg.delivery
     assert pkg.classification_system.getparent() is pkg.delivery
     assert len(list(pkg.iter_kind("ordnungssystemposition"))) == 1
+    assert dossier.getparent() is position
+    assert document.getparent() is dossier
+    assert pkg.referenced_files(document) == [file_element]
     toc_roots = {pkg.text(entry, "name") for entry in pkg.children(pkg.table_of_contents, "ordner")}
     assert toc_roots == {"header", "content"}
     assert pkg.root.get("schemaVersion") == schema_version
@@ -233,6 +247,15 @@ def test_minimal_package_model_roundtrips_by_release(tmp_path, version, schema_v
     assert reopened.provenance.getparent() is reopened.delivery
     assert reopened.classification_system.getparent() is reopened.delivery
     assert len(list(reopened.iter_kind("ordnungssystemposition"))) == 1
+    reopened_position = next(reopened.iter_kind("ordnungssystemposition"))
+    reopened_dossier = next(reopened.iter_kind("dossier"))
+    reopened_document = next(document for document in reopened.iter_kind("dokument")
+                             if reopened.text(document, "titel") == "Model document")
+    reopened_file = reopened.file_by_id(file_id)
+    assert reopened_dossier.getparent() is reopened_position
+    assert reopened_document.getparent() is reopened_dossier
+    assert reopened.referenced_files(reopened_document) == [reopened_file]
+    assert reopened.relpath(reopened_file).as_posix() == "content/model.txt"
     assert {reopened.text(entry, "name") for entry in reopened.children(reopened.table_of_contents, "ordner")} == {
         "header", "content"}
     assert reopened.root.get("schemaVersion") == schema_version
