@@ -213,6 +213,26 @@ def assign_files(pkg: SipPackage, target, files, create_documents: bool = False)
     return count
 
 
+def add_file_reference(pkg: SipPackage, target, file_el) -> bool:
+    """Adds one reference, allowing repeated GEVER document links where the XSD permits them."""
+    kind = pkg.kind(target)
+    if kind not in ("dossier", "subdossier", "dokument", "mappe"):
+        raise StructureError("Dateien können nur Dossiers, Dokumenten oder Mappen zugewiesen werden.")
+    info = xsd_info.for_package(pkg)
+    if info.element(xsd_info.type_name(pkg, target, info), "dateiRef") is None:
+        raise StructureError("Dieses Objekt kann gemäss Paket-XSD keine Dateien direkt referenzieren.")
+    ident = file_el.get("id", "")
+    if not ident:
+        raise StructureError("Die ausgewählte Datei hat keine ID.")
+    already_referenced = any(ident in (reference.text or "").split()
+                             for reference in pkg.children(target, "dateiRef"))
+    if already_referenced and not pkg.can_repeat_reference_target(target):
+        raise StructureError("Diese Datei wird von diesem Objekt bereits referenziert.")
+    reference = pkg.create_child(target, "dateiRef")
+    reference.text = ident
+    return True
+
+
 def document_for_file(pkg: SipPackage, owner, file_el):
     """Neues Dokument für diese Datei: replaces a direct file reference of a dossier by a document."""
     if not unassign(pkg, owner, file_el):

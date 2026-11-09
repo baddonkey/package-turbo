@@ -90,6 +90,125 @@ def test_reference_attributes_follow_version_without_changing_assignments(tmp_pa
         assert next(reopened.iter_kind("dateiRef")).get("repraesentation") == "master"
 
 
+def test_incoming_file_references_preserve_owner_and_shared_targets(tmp_path):
+    from ph_backend import files, package_factory, structure
+
+    pkg = package_factory.create_package(tmp_path, "SIP_20261109_Test_IncomingReferences", "Test",
+                                         version="1.3", delivery_type="FILES")
+    content = next(element for element in pkg.iter_kind("ordner") if pkg.text(element, "name") == "content")
+    nested_folder = files.create_folder(pkg, content, "Nested")
+    sources = [tmp_path / "first.txt", tmp_path / "second.txt", tmp_path / "unused.txt"]
+    for source in sources:
+        source.write_text(source.stem, encoding="utf-8")
+    files.import_paths(pkg, nested_folder, sources)
+    first_file, second_file, unused_file = pkg.children(nested_folder, "datei")
+
+    dossier = structure.add_objects(pkg, next(pkg.iter_kind("ordnungssystemposition")), "dossier")[0]
+    subdossier = structure.add_objects(pkg, dossier, "dossier")[0]
+    document = structure.add_objects(pkg, subdossier, "dokument")[0]
+    structure.assign_files(pkg, dossier, [first_file])
+    structure.assign_files(pkg, subdossier, [first_file])
+    structure.assign_files(pkg, document, [first_file])
+    shared_reference = pkg.children(document, "dateiRef")[0]
+    shared_reference.text = f"{first_file.get('id')} {second_file.get('id')}"
+    shared_reference.set("version", "Edition 2")
+
+    incoming = pkg.incoming_reference_attributes(first_file)
+    references_by_kind = {reference["ownerKind"]: reference for reference in incoming}
+    assert set(references_by_kind) == {"dossier", "subdossier", "dokument"}
+    assert references_by_kind["dossier"]["ownerKey"] == pkg.key(dossier)
+    assert references_by_kind["subdossier"]["ownerKey"] == pkg.key(subdossier)
+    shared = references_by_kind["dokument"]
+    assert shared["index"] == 0
+    assert shared["fileIds"] == [first_file.get("id"), second_file.get("id")]
+    assert "first" in shared["name"] and "second" in shared["name"]
+    assert {attribute["name"] for attribute in shared["attributes"]} == {
+        "version", "repraesentation", "information", "reihung"}
+    assert next(attribute for attribute in shared["attributes"] if attribute["name"] == "version")["value"] == "Edition 2"
+    assert [reference["ownerKey"] for reference in pkg.incoming_reference_attributes(second_file)] == [
+        pkg.key(document)]
+
+    editor = MetadataEditor()
+    editor.set_package(pkg)
+    assert editor.incomingReferenceAttributes(pkg.key(first_file)) == incoming
+    assert editor.incomingReferenceAttributes(pkg.key(dossier)) == []
+    target_options = editor.incomingReferenceTargets(pkg.key(unused_file))
+    assert {target["ownerKey"] for target in target_options} == {
+        pkg.key(dossier), pkg.key(subdossier), pkg.key(document)}
+    editor.setReferenceAttribute(shared["ownerKey"], shared["index"], "information", "Shared scan")
+    assert shared_reference.get("information") == "Shared scan"
+    updated_shared = next(reference for reference in pkg.incoming_reference_attributes(first_file)
+                          if reference["ownerKind"] == "dokument")
+    assert next(attribute for attribute in updated_shared["attributes"]
+                if attribute["name"] == "information")["value"] == "Shared scan"
+    assert pkg.incoming_reference_attributes(unused_file) == []
+
+
+@pytest.mark.parametrize("version", ["1.1", "1.2", "1.3"])
+def test_incoming_file_reference_attributes_follow_schema_release(tmp_path, version):
+    from ph_backend import files, package_factory, structure
+
+    pkg = package_factory.create_package(tmp_path, f"SIP_20261109_Test_Incoming_{version}", "Test",
+                                         version=version, delivery_type="FILES")
+    content = next(element for element in pkg.iter_kind("ordner") if pkg.text(element, "name") == "content")
+    source = tmp_path / f"reference-{version}.txt"
+    source.write_text("reference", encoding="utf-8")
+    files.import_paths(pkg, content, [source])
+    file_element = pkg.children(content, "datei")[0]
+    dossier = structure.add_objects(pkg, next(pkg.iter_kind("ordnungssystemposition")), "dossier")[0]
+    document = structure.add_objects(pkg, dossier, "dokument")[0]
+    structure.assign_files(pkg, document, [file_element])
+
+    incoming = pkg.incoming_reference_attributes(file_element)
+    assert len(incoming) == 1
+    assert incoming[0]["ownerKind"] == "dokument"
+    attribute_names = {attribute["name"] for attribute in incoming[0]["attributes"]}
+    if version == "1.1":
+        assert attribute_names == set()
+    else:
+        assert attribute_names == {"version", "repraesentation", "information", "reihung"}
+
+
+@pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
+@pytest.mark.parametrize("delivery_type", ["GEVER", "FILES"])
+def test_reference_target_choices_follow_schema_and_exclude_existing_links(tmp_path, version, delivery_type):
+    from ph_backend import files, package_factory, structure
+
+    pkg = package_factory.create_package(tmp_path, f"SIP_20261109_Test_Targets_{version}_{delivery_type}", "Test",
+                                         version=version, delivery_type=delivery_type)
+    content = next(element for element in pkg.iter_kind("ordner") if pkg.text(element, "name") == "content")
+    source = tmp_path / f"candidate-{version}.txt"
+    source.write_text("candidate", encoding="utf-8")
+    files.import_paths(pkg, content, [source])
+    file_element = pkg.children(content, "datei")[0]
+    dossier = structure.add_objects(pkg, next(pkg.iter_kind("ordnungssystemposition")), "dossier")[0]
+    document = structure.add_objects(pkg, dossier, "dokument")[0]
+
+    targets = pkg.reference_targets(file_element)
+    target_keys = {target["ownerKey"] for target in targets}
+    expected_keys = {pkg.key(document)} if delivery_type == "GEVER" else {pkg.key(dossier), pkg.key(document)}
+    assert target_keys == expected_keys
+    assert all(target["label"] and target["ownerKind"] in ("dossier", "dokument") for target in targets)
+
+    initial_target = document if delivery_type == "GEVER" else dossier
+    assert structure.assign_files(pkg, initial_target, [file_element]) == 1
+    remaining = pkg.reference_targets(file_element)
+    if delivery_type == "GEVER":
+        assert len(remaining) == 1 and remaining[0]["ownerKey"] == pkg.key(document)
+        assert remaining[0]["hasReference"] is True
+        assert structure.add_file_reference(pkg, document, file_element)
+        references = pkg.children(document, "dateiRef")
+        assert len(references) == 2
+        if version in ("1.2", "1.3"):
+            references[1].set("version", "Second version")
+        assert not [issue for issue in Validator(pkg).run(full=False) if issue["checkId"] == "schema"]
+    else:
+        assert pkg.key(initial_target) not in {target["ownerKey"] for target in remaining}
+        assert [target["ownerKey"] for target in remaining] == [pkg.key(document)]
+        assert structure.assign_files(pkg, document, [file_element]) == 1
+        assert pkg.reference_targets(file_element) == []
+
+
 @pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
 def test_files_relationship_targets_roundtrip_by_release(tmp_path, version):
     from ph_backend import files, package_factory, structure

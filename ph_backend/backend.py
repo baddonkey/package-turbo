@@ -925,6 +925,15 @@ class Backend(QObject):
 
     themeMode = Property(str, _get_theme_mode, _set_theme_mode, notify=settingsChanged)
 
+    def _get_show_incoming_file_references(self) -> bool:
+        return bool(self.setting("ui/showIncomingFileReferences", False))
+
+    def _set_show_incoming_file_references(self, value: bool) -> None:
+        self.set_setting("ui/showIncomingFileReferences", bool(value))
+
+    showIncomingFileReferences = Property(bool, _get_show_incoming_file_references,
+                                         _set_show_incoming_file_references, notify=settingsChanged)
+
     @Property(str, notify=settingsChanged)
     def systemTheme(self) -> str:
         app = QGuiApplication.instance()

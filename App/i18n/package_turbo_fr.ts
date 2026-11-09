@@ -1395,7 +1395,54 @@ Ouvrez ou créez un paquet, ou glissez le répertoire SIP ici.</translation>
     </message>
 </context>
 <context>
+    <name>ReferenceAttributesEditor</name>
+    <message>
+        <source>Dateiverweise</source>
+        <translation>Références de fichiers</translation>
+    </message>
+    <message>
+        <source>Referenziert in</source>
+        <translation>Référencé dans</translation>
+    </message>
+    <message>
+        <source>Keine Verweise auf diese Datei.</source>
+        <translation>Aucune référence vers ce fichier.</translation>
+    </message>
+    <message>
+        <source>Dateiverweis: %1 (%2)</source>
+        <translation>Référence de fichier : %1 (%2)</translation>
+    </message>
+    <message>
+        <source>Referenzierendes Objekt</source>
+        <translation>Objet référent</translation>
+    </message>
+    <message>
+        <source>Datei(en) im Verweis</source>
+        <translation>Fichier(s) dans la référence</translation>
+    </message>
+    <message>
+        <source>Zielobjekt auswählen...</source>
+        <translation>Sélectionner l'objet cible...</translation>
+    </message>
+    <message>
+        <source>Referenz hinzufügen</source>
+        <translation>Ajouter une référence</translation>
+    </message>
+    <message>
+        <source>Weitere Referenz hinzufügen</source>
+        <translation>Ajouter une autre référence</translation>
+    </message>
+    <message>
+        <source>Keine weiteren schemazulässigen Zielobjekte.</source>
+        <translation>Aucun autre objet cible autorisé par le schéma.</translation>
+    </message>
+</context>
+<context>
     <name>PreferencesDialog</name>
+    <message>
+        <source>Dateiverweise</source>
+        <translation>Références de fichiers</translation>
+    </message>
     <message>
         <location filename="../PreferencesDialog.qml" line="9"/>
         <source>Benutzervorgaben</source>
@@ -1482,6 +1529,10 @@ Ouvrez ou créez un paquet, ou glissez le répertoire SIP ici.</translation>
         <location filename="../PreferencesDialog.qml" line="72"/>
         <source>Wird nach einem Neustart wirksam.</source>
         <translation>Prend effet après un redémarrage.</translation>
+    </message>
+    <message>
+        <source>Verweise auf ausgewählte Dateien anzeigen</source>
+        <translation>Afficher les références aux fichiers sélectionnés</translation>
     </message>
 </context>
 <context>

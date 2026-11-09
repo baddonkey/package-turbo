@@ -211,6 +211,31 @@ class Driver:
 
         self.add(lambda: self.call("preferencesDialog", "open"), "21-benutzervorgaben")
         self.add(lambda: self.call("preferencesDialog", "close"))
+
+        def show_incoming_file_references():
+            identifiers = sorted(self.pkg().referenced_ids())
+            if not identifiers:
+                raise RuntimeError("The sample SIP has no file references")
+            file_element = self.pkg().file_by_id(identifiers[0])
+            if file_element is None:
+                raise RuntimeError("A sample file reference has no target")
+            self.backend.showIncomingFileReferences = True
+            self.maximize("editor")
+            self.backend.reveal(self.pkg().key(file_element))
+
+        def select_incoming_reference_target():
+            target_picker = self.find("incomingReferenceTarget-" + str(self.incoming_file_key))
+            if target_picker.property("count") > 1:
+                target_picker.setProperty("currentIndex", 1)
+
+        def prepare_incoming_file_references():
+            identifiers = sorted(self.pkg().referenced_ids())
+            self.incoming_file_key = self.pkg().key(self.pkg().file_by_id(identifiers[0]))
+            show_incoming_file_references()
+
+        self.add(prepare_incoming_file_references, None, 1200)
+        self.add(select_incoming_reference_target, "26-dateiverweise")
+        self.add(lambda: (self.maximize(""), setattr(self.backend, "showIncomingFileReferences", False)))
         self.add(lambda: self.call("shortcutsDialog", "open"), "22-tastenbelegung")
         self.add(lambda: self.call("shortcutsDialog", "close"))
         self.add(lambda: self.call("aboutDialog", "open"), "23-ueber")

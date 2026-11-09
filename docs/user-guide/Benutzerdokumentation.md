@@ -46,11 +46,22 @@ Package Turbo öffnet und prüft Pakete der Standardversionen eCH-0160 v1.0, v1.
 
 Die Unterstützung der Paket-Schemas umfasst noch nicht für jedes Metadatum einen vollständigen Editorablauf. Beachten Sie die nachfolgend beschriebenen Einschränkungen.
 
-Die Attribute *version*, *repraesentation*, *information* und *reihung* von `<dateiRef>`
-werden bei eCH-0160 v1.2/v1.3 im Abschnitt *Dateiverweise* des referenzierenden Objekts
-angezeigt und bearbeitet. In v1.0/v1.1 sind diese Attribute nicht deklariert und werden
-nicht zur Erfassung angeboten. Die Bearbeitung verändert weder die Dateizuordnung noch
-den Dateiinhalt; vorhandene unbekannte Attribute bleiben schreibgeschützt erhalten.
+Die optionalen Attribute *version*, *repraesentation*, *information* und *reihung* von
+`<dateiRef>` sind bei eCH-0160 v1.2/v1.3 verfügbar. In v1.0/v1.1 sind sie nicht deklariert.
+Sie werden nicht im Dossier- oder Dokumentabschnitt angezeigt. Aktivieren Sie die optionale
+Dateiansicht unten, um die Attribute bei der referenzierten Datei zu sehen und zu bearbeiten.
+Die Bearbeitung verändert weder die Dateizuordnung noch den Dateiinhalt; unbekannte Attribute
+bleiben schreibgeschützt erhalten.
+
+Optional können Sie unter *Extras → Benutzervorgaben → Dateiverweise* die Anzeige
+*Verweise auf ausgewählte Dateien anzeigen* einschalten. Bei ausgewählter Datei zeigt
+der Editor dann unter den Dateieigenschaften die Objekte, deren `<dateiRef>` auf diese
+Datei verweist, einschliesslich der Attribute des jeweiligen Verweises. Bei mehreren
+Verweisen werden sie mit ihrem referenzierenden Objekt getrennt angezeigt. Die Einstellung
+ist standardmässig ausgeschaltet. Dateiverweise bleiben Metadaten des referenzierenden
+Objekts und werden nicht zu Dateieigenschaften. Ein nicht referenziertes Objekt zeigt den
+Hinweis *Keine Verweise auf diese Datei.*. Änderungen an einem Verweis werden am
+referenzierenden Objekt gespeichert und sind auch dort sichtbar.
 
 ### 1.3 Sprache der Applikation
 
@@ -733,10 +744,28 @@ ein Wert entfernt. Die Anzahl folgt den Vorgaben des Paket-XSD. Mehrzeilige Wert
 erhalten. Bestehende Elementattribute werden beim Umordnen zusammen mit ihrer Zeile bewegt.
 Skalare Massenmutation bietet solche Listen nicht als einzelne Textfelder an.
 
-Im Abschnitt *Dateiverweise* werden zugewiesene Dateien mit ihren schemaabhängigen
-Attributen angezeigt. Eine Attributänderung gehört zur Metadaten-Arbeitskopie und wird
+Bei einer ausgewählten Datei kann zusätzlich der Abschnitt *Referenziert in* eingeblendet
+werden (siehe 16.3). Er gruppiert die Dateiverweise nach dem referenzierenden Objekt.
+Die tabellarische Ansicht zeigt pro Verweis das referenzierende Objekt, die Datei-IDs und
+die Attribute des Verweises. Eine Änderung hier wird am referenzierenden Objekt gespeichert.
+Ein Verweis mit mehreren Datei-IDs bleibt ein gemeinsamer Verweis; seine Attribute gelten
+für diesen Verweis.
+
+Mit *Zielobjekt auswählen...* und *Referenz hinzufügen* können Sie die ausgewählte Datei
+einem weiteren Objekt zuweisen. Angeboten werden nur Objekte, für die das XSD der geöffneten
+Paketversion eine direkte Dateireferenz erlaubt. Welche Objekte direkte Ziele sein können, hängt
+von eCH-Version und GEVER-/FILES-Profil ab; in GEVER wird die Datei beispielsweise einem Dokument
+unter dem Dossier zugewiesen. In GEVER-Dokumenten kann dieselbe Datei mehrfach referenziert und
+pro `<dateiRef>` unterschiedlich mit *version* ausgezeichnet werden. In FILES-Kontexten mit
+XSD-Eindeutigkeitsregel wird ein bereits referenziertes Dateiobjekt für denselben Owner nicht
+erneut angeboten. Dasselbe Dateiobjekt kann von unterschiedlichen Objekten referenziert werden.
+Die Zuweisung folgt dem normalen Speichern sowie Paket-Undo/Redo.
+
+Eine Attributänderung an einem Dateiverweis gehört zur Metadaten-Arbeitskopie und wird
 mit *Speichern* übernommen; sie ist über Paket-Undo/Redo rücksetzbar. Die vollständige
 XSD-Validierung prüft weiterhin das gesamte XML, einschliesslich Datentypen und Facetten.
+
+![Datei mit den referenzierenden Objekten und Dateiverweis-Attributen](img/26-dateiverweise.png)
 
 ## 10. Ablieferung prüfen und korrigieren
 
@@ -1072,6 +1101,8 @@ als Fallback. Mit *OK* wird die Auswahl übernommen und für den nächsten Start
 Im selben Dialog können Sie die Identität, Speicher- und Aufbewahrungsgrenzen, Validierung,
 Navigatoren, Suche, Stichprobe, Report-Hersteller und Sprache einstellen. Die Sprachänderung
 wird erst nach einem Neustart wirksam; das Farbschema wird unmittelbar übernommen.
+Die optionale Anzeige der Objekte, die auf eine ausgewählte Datei verweisen, kann unter
+*Dateiverweise* aktiviert werden und ist standardmässig ausgeschaltet.
 
 ![Benutzervorgaben](img/21-benutzervorgaben.png)
 

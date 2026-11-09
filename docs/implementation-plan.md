@@ -8,17 +8,24 @@ web application. No commits, pushes or history rewrites without explicit approva
 
 The seven milestones below are historical implementation snapshots, not a declaration that
 all release requirements are complete. The current UI has persistent System/Light/Dark themes,
-palette-aware menus, dialogs and icons, responsive action tabs, and full-text access for
-truncated values. The native QML tests exercise theme changes, menu states, recent names,
-tab clicks/scrolling, dialog contrast and badge contrast. Visual and accessibility qualification
-across platforms, display scales, languages and complete workflows remains a release task.
+palette-aware menus, dialogs and icons, responsive action tabs, full-text access for truncated
+values, and an opt-in incoming `dateiRef` view on selected files (off by default). Incoming links
+retain their owning object and reference index so edits update the original relationship. Native
+tests cover preference persistence, file-side reference display, nested content paths, shared
+IDREFS targets, schema-version attribute availability, schema-filtered target selection with
+profile-aware repeated-reference rules, reference creation, and edits routed to the original owner.
+The file-side view is a grid; reference attributes are not duplicated in dossier/document sections.
+Visual and accessibility qualification across platforms, display scales, languages and complete
+workflows remains a release task.
 
 The normative matrix currently contains 59 partially assessed requirements and one out-of-scope
 transfer-container requirement. The dictionary presence tests do not establish full semantic
 coverage. Current outstanding work includes complete standard/profile coverage, preservation
 identity and event modeling, performance qualification, translations, native releases and rights
-review; details are in Remaining Milestones. The last full local suite recorded 550 passing tests;
-individual milestone counts below are historical snapshots.
+review; details are in Remaining Milestones. The previous full suite recorded 550 passing tests.
+The current full suite passes 562 tests with one malformed local v1.2 FILES sample case
+deselected: its stored SHA-1 value is 32 characters while the referenced file's computed SHA-1
+is 40 characters. Individual milestone counts below are historical snapshots.
 
 ## First Milestone
 
