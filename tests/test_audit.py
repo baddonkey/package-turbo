@@ -123,9 +123,56 @@ def test_truncation_and_trusted_checkpoint_are_checked(tmp_path):
         journal.verify()
     with sqlite3.connect(journal.path) as connection:
         connection.execute("UPDATE journal SET sequence=1, digest=?", (first.digest,))
-    assert journal.verify(first) == first
+    with pytest.raises(AuditError, match="trusted checkpoint"):
+        journal.verify(first)
     with pytest.raises(AuditError, match="checkpoint"):
         journal.verify(second)
+
+
+def test_external_checkpoint_rejects_consistent_journal_rewrite(tmp_path):
+    path = tmp_path / "journal.sqlite3"
+    journal = AuditJournal(path)
+    _append(journal)
+    package_identifier = journal.package_identifier
+
+    with sqlite3.connect(path) as connection:
+        connection.execute("DROP TRIGGER immutable_event_delete")
+        connection.execute("DELETE FROM events")
+        connection.execute("UPDATE journal SET sequence=0, digest=?", (ZERO_DIGEST,))
+
+    with pytest.raises(AuditError, match="trusted checkpoint"):
+        AuditJournal(path, package_identifier=package_identifier)
+
+
+def test_external_checkpoint_binds_package_identity_to_journal_path(tmp_path):
+    path = tmp_path / "journal.sqlite3"
+    journal = AuditJournal(path)
+    _append(journal)
+
+    with sqlite3.connect(path) as connection:
+        connection.execute("DROP TRIGGER immutable_event_delete")
+        connection.execute("DELETE FROM events")
+        connection.execute("UPDATE journal SET package_identifier='forged', sequence=0, digest=?",
+                           (ZERO_DIGEST,))
+
+    with pytest.raises(AuditError, match="different package"):
+        AuditJournal(path)
+
+
+def test_trusted_checkpoint_recovers_after_commit_before_finalize(tmp_path, monkeypatch):
+    path = tmp_path / "journal.sqlite3"
+    journal = AuditJournal(path)
+    package_identifier = journal.package_identifier
+
+    def interrupted_finalize(_checkpoint):
+        raise AuditError("simulated interruption")
+
+    monkeypatch.setattr(journal._checkpoint_store, "finalize", interrupted_finalize)
+    with pytest.raises(AuditError, match="simulated interruption"):
+        _append(journal)
+
+    reopened = AuditJournal(path, package_identifier=package_identifier)
+    assert reopened.verify().sequence == 1
 
 
 @pytest.mark.parametrize("detail", [{"invalid": float("nan")}, {"invalid": object()}])

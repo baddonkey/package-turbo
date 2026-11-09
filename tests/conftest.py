@@ -10,6 +10,11 @@ PDF_BYTES = b"%PDF-1.4\n% test document\n"
 TXT_BYTES = b"hello world\n"
 
 
+@pytest.fixture(autouse=True)
+def isolated_trusted_checkpoint_directory(tmp_path, monkeypatch):
+  monkeypatch.setenv("PACKAGE_TURBO_TRUSTED_STATE_DIR", str(tmp_path / "trusted-state"))
+
+
 def _md5(data: bytes) -> str:
     return hashlib.md5(data).hexdigest()
 

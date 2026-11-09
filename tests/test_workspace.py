@@ -33,6 +33,20 @@ def test_metadata_commit_is_audited_and_reopen_is_stable(tmp_path):
     assert len(reopened.journal.records()) == 2
 
 
+def test_metadata_save_rejects_oversized_xml(tmp_path, monkeypatch):
+    from ph_backend import processing, workspace as workspace_module
+
+    workspace = _workspace(tmp_path)
+    monkeypatch.setattr(processing, "MAX_METADATA_BYTES", 8)
+    monkeypatch.setattr(workspace_module, "MAX_METADATA_BYTES", 8)
+
+    with pytest.raises(AuditError, match="metadata.xml exceeds"):
+        workspace.save(b"x" * 9)
+
+    assert workspace.metadata_path.read_bytes() == BEFORE
+    assert workspace.journal.records() == []
+
+
 def test_save_logs_individual_edits_in_one_transaction(tmp_path):
     workspace = _workspace(tmp_path)
     events = [{"event_type": "metadata modification", "operator": "editor-1",

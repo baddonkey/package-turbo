@@ -1,6 +1,7 @@
 """Loading, querying, editing and saving an eCH-0160 Submission Information Package (SIP)."""
 
 import os
+import stat
 import uuid
 import zipfile
 from pathlib import Path, PurePosixPath
@@ -8,7 +9,7 @@ from pathlib import Path, PurePosixPath
 from lxml import etree
 
 from . import schema, timespan, xsd_info
-from .processing import digest_file
+from .processing import MAX_METADATA_BYTES, MetadataTooLargeError, digest_file, read_bytes
 
 HASH_ALGORITHMS = {"MD5": "md5", "SHA-1": "sha1", "SHA-256": "sha256", "SHA-512": "sha512"}
 
@@ -32,7 +33,9 @@ def _safe_parser() -> etree.XMLParser:
 
 def parse_xml(path: Path):
     try:
-        return etree.parse(str(path), _safe_parser())
+        return etree.ElementTree(etree.fromstring(read_bytes(path), _safe_parser()))
+    except MetadataTooLargeError as exc:
+        raise InvalidPackageError(str(exc)) from exc
     except etree.XMLSyntaxError as exc:
         raise InvalidPackageError(
             f"Die Datei {path.name} konnte nicht gelesen werden (Zeile {exc.lineno}): {exc.msg}"
@@ -573,6 +576,8 @@ class SipPackage:
     # ---------------------------------------------------------------- persistence
 
     def restore_xml(self, data: bytes) -> None:
+        if len(data) > MAX_METADATA_BYTES:
+            raise InvalidPackageError(f"metadata.xml exceeds the {MAX_METADATA_BYTES}-byte limit.")
         self.tree = etree.ElementTree(etree.fromstring(data, _safe_parser()))
         self.root = self.tree.getroot()
         self._by_key.clear()
@@ -596,7 +601,25 @@ class SipPackage:
             raise InvalidPackageError("Commit staged files before exporting the package.")
         if self.root_dir is None:
             raise InvalidPackageError("Nur ein vollständiges SIP kann gezippt werden.")
-        base = self.root_dir.parent
-        with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED, allowZip64=True) as zf:
-            for path in sorted(self.root_dir.rglob("*")):
+        root = Path(self.root_dir)
+        root_attributes = getattr(root.lstat(), "st_file_attributes", 0)
+        if root.is_symlink() or root_attributes & 0x400 or not root.is_dir():
+            raise InvalidPackageError("Linked SIP roots cannot be exported safely.")
+        root_resolved = root.resolve()
+        destination = Path(dest)
+        if destination.resolve().is_relative_to(root_resolved):
+            raise InvalidPackageError("The ZIP destination must be outside the SIP.")
+
+        paths = sorted(root.rglob("*"))
+        for path in paths:
+            attributes = getattr(path.lstat(), "st_file_attributes", 0)
+            mode = path.lstat().st_mode
+            if path.is_symlink() or attributes & 0x400:
+                raise InvalidPackageError("Linked files and directories cannot be exported safely.")
+            if not (stat.S_ISDIR(mode) or stat.S_ISREG(mode)):
+                raise InvalidPackageError("Special files cannot be exported safely.")
+
+        base = root.parent
+        with zipfile.ZipFile(destination, "w", zipfile.ZIP_DEFLATED, allowZip64=True) as zf:
+            for path in paths:
                 zf.write(path, path.relative_to(base).as_posix())

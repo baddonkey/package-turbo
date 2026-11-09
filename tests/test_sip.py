@@ -21,6 +21,16 @@ def test_open_invalid_folder(tmp_path):
         SipPackage.open_folder(tmp_path)
 
 
+def test_open_rejects_oversized_metadata(tmp_path, monkeypatch):
+    from ph_backend import package_factory, processing
+
+    pkg = package_factory.create_package(tmp_path, "SIP_20261109_Test_LargeMetadata", "Test")
+    monkeypatch.setattr(processing, "MAX_METADATA_BYTES", 16)
+
+    with pytest.raises(InvalidPackageError, match="metadata.xml exceeds"):
+        SipPackage.open_folder(pkg.root_dir)
+
+
 @pytest.mark.parametrize("version", ["1.0", "1.1", "1.2", "1.3"])
 def test_transfer_container_is_not_opened_as_sip_folder(tmp_path, version):
     import zipfile
@@ -155,6 +165,35 @@ def test_zip(sip_dir, tmp_path):
     pkg.zip_to(target)
     names = zipfile.ZipFile(target).namelist()
     assert f"{sip_dir.name}/header/metadata.xml" in names
+
+
+def test_zip_rejects_symlink_entries(sip_dir, tmp_path):
+    from ph_backend.sip import InvalidPackageError
+
+    pkg = SipPackage.open_folder(sip_dir)
+    outside = tmp_path / "outside.txt"
+    outside.write_text("outside package", encoding="utf-8")
+    link = pkg.root_dir / "header" / "outside-link.txt"
+    try:
+        link.symlink_to(outside)
+    except OSError as exc:
+        pytest.skip(f"Symlink creation unavailable: {exc}")
+
+    with pytest.raises(InvalidPackageError, match="Linked files"):
+        pkg.zip_to(tmp_path / "out.zip")
+
+    assert not (tmp_path / "out.zip").exists()
+
+
+def test_zip_rejects_destination_inside_package(sip_dir):
+    from ph_backend.sip import InvalidPackageError
+
+    pkg = SipPackage.open_folder(sip_dir)
+
+    with pytest.raises(InvalidPackageError, match="outside the SIP"):
+        pkg.zip_to(pkg.root_dir / "inside.zip")
+
+    assert not (pkg.root_dir / "inside.zip").exists()
 
 
 @pytest.mark.parametrize("value,lower,upper", [

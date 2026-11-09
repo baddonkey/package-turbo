@@ -157,7 +157,7 @@ def _build_audit_bundle(root: Path, journal_path: Path, destination: Path,
 
         journal = AuditJournal(journal_path)
         checkpoint = journal.verify()
-        metadata_xml = (snapshot / "header" / "metadata.xml").read_bytes()
+        metadata_xml = read_bytes(snapshot / "header" / "metadata.xml")
         premis_data = journal.premis_xml(redact_values=redact_values, metadata_xml=metadata_xml,
                                          sip_manifest=original_manifest)
         mets_data = journal.mets_xml(archive_name, archive_digest, premis_filename=premis_name,
@@ -1228,7 +1228,7 @@ class Backend(QObject):
             def export():
                 journal = AuditJournal(journal_path)
                 checkpoint = journal.verify()
-                metadata_xml = pkg.metadata_path.read_bytes()
+                metadata_xml = read_bytes(pkg.metadata_path)
                 sip_manifest = manifest(pkg.root_dir)
                 if sip_manifest.get("header/metadata.xml", {}).get("sha256") != hashlib.sha256(metadata_xml).hexdigest():
                     raise AuditError("The SIP changed while the PREMIS export snapshot was being created.")
