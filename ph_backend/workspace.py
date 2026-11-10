@@ -69,6 +69,9 @@ class MetadataWorkspace:
                     id INTEGER PRIMARY KEY CHECK (id=1), transaction_id TEXT NOT NULL,
                     before_xml BLOB NOT NULL, after_xml BLOB NOT NULL,
                     events TEXT NOT NULL, operator TEXT NOT NULL, software_version TEXT NOT NULL)""")
+                connection.execute("""CREATE TABLE IF NOT EXISTS metadata_draft (
+                    id INTEGER PRIMARY KEY CHECK (id=1), baseline_digest TEXT NOT NULL,
+                    snapshot BLOB NOT NULL, events TEXT NOT NULL)""")
                 connection.execute("INSERT OR IGNORE INTO metadata_state VALUES (1, ?)",
                                    (self._hash(read_bytes(self.metadata_path)),))
                 connection.commit()
@@ -134,6 +137,78 @@ class MetadataWorkspace:
                 raise AuditError("A metadata transaction needs recovery. Reopen the package before editing.")
             self._check_baseline()
 
+    def has_draft(self) -> bool:
+        with self.journal._connection("ro") as connection:
+            return connection.execute("SELECT id FROM metadata_draft WHERE id=1").fetchone() is not None
+
+    def persist_draft(self, snapshot: bytes, events: list[dict]) -> None:
+        if len(snapshot) > MAX_METADATA_BYTES:
+            raise AuditError(f"metadata.xml exceeds the {MAX_METADATA_BYTES}-byte limit.")
+        if not isinstance(events, list) or not events:
+            raise AuditError("A metadata draft requires pending edits.")
+        for event in events:
+            if (not isinstance(event, dict) or not isinstance(event.get("event_type"), str)
+                    or not event["event_type"].strip() or not isinstance(event.get("detail"), dict)
+                    or not isinstance(event.get("operator", self.operator), str)
+                    or not event.get("operator", self.operator).strip()):
+                raise AuditError("Metadata draft events need a type, operator and structured detail.")
+        try:
+            events_json = rfc8785.dumps(events).decode("utf-8")
+        except (ValueError, TypeError) as exc:
+            raise AuditError("Metadata draft events cannot be encoded as canonical JSON.") from exc
+        parser = etree.XMLParser(resolve_entities=False, no_network=True, load_dtd=False)
+        try:
+            root = etree.fromstring(snapshot, parser)
+        except etree.XMLSyntaxError as exc:
+            raise AuditError("The metadata draft is not valid XML.") from exc
+        if etree.QName(root).localname != "paket":
+            raise AuditError("The metadata draft has no package root element.")
+
+        with self._locked():
+            baseline = self._check_baseline()
+            baseline_digest = self._hash(baseline)
+            snapshot_digest = self._hash(snapshot)
+            events_digest = self._hash(events_json.encode("utf-8"))
+            detail = {"scope": "metadata-only", "baselineSha256": baseline_digest,
+                      "snapshotSha256": snapshot_digest, "eventsSha256": events_digest}
+            with self.journal._connection("rw") as connection:
+                self.journal._verify(connection)
+                if connection.execute("SELECT id FROM metadata_prepared WHERE id=1").fetchone() is not None:
+                    raise AuditError("A metadata transaction needs recovery before editing.")
+                connection.execute("INSERT OR REPLACE INTO metadata_draft VALUES (1, ?, ?, ?)",
+                                   (baseline_digest, snapshot, events_json))
+                self.journal._append(connection, "metadata draft staging", agent_identifier=self.operator,
+                                     software_version=self.software_version, detail=detail)
+                connection.commit()
+
+    def load_draft(self) -> tuple[bytes, list[dict]] | None:
+        with self._locked():
+            baseline = self._check_baseline()
+            with self.journal._connection("ro") as connection:
+                _, records = self.journal._verify(connection)
+                draft = connection.execute("SELECT * FROM metadata_draft WHERE id=1").fetchone()
+            if draft is None:
+                return None
+            snapshot = bytes(draft["snapshot"])
+            events = json.loads(draft["events"])
+            if draft["baseline_digest"] != self._hash(baseline) or not isinstance(events, list) or not events:
+                raise AuditError("The metadata draft does not match the current package baseline.")
+            expected = {"scope": "metadata-only", "baselineSha256": self._hash(baseline),
+                        "snapshotSha256": self._hash(snapshot),
+                        "eventsSha256": self._hash(draft["events"].encode("utf-8"))}
+            staging_records = [record["payload"] for record in records
+                               if record["payload"]["eventType"] == "metadata draft staging"]
+            if not staging_records or staging_records[-1]["detail"] != expected:
+                raise AuditError("The metadata draft does not match preservation history.")
+            parser = etree.XMLParser(resolve_entities=False, no_network=True, load_dtd=False)
+            try:
+                root = etree.fromstring(snapshot, parser)
+            except etree.XMLSyntaxError as exc:
+                raise AuditError("The metadata draft is not valid XML.") from exc
+            if etree.QName(root).localname != "paket":
+                raise AuditError("The metadata draft has no package root element.")
+            return snapshot, events
+
     def _write(self, data: bytes) -> None:
         return run_background(lambda: self._write_atomic(data), "Write committed metadata")
 
@@ -184,6 +259,7 @@ class MetadataWorkspace:
             if outcome == "success":
                 connection.execute("UPDATE metadata_state SET baseline_digest=? WHERE id=1",
                                    (self._hash(pending["after_xml"]),))
+                connection.execute("DELETE FROM metadata_draft WHERE id=1")
             connection.execute("DELETE FROM metadata_prepared WHERE id=1")
             connection.commit()
         if outcome == "success":
@@ -265,13 +341,20 @@ class MetadataWorkspace:
             return True
 
     def discard(self, events: list[dict]) -> None:
-        if not events:
-            return
         with self._locked():
-            with self.journal._connection("ro") as connection:
-                if connection.execute("SELECT id FROM metadata_prepared").fetchone() is not None:
+                with self.journal._connection("ro") as connection:
+                    pending = connection.execute("SELECT id FROM metadata_prepared WHERE id=1").fetchone()
+                if pending is not None:
                     raise AuditError("Recover the pending metadata commit before discarding edits.")
-            self._check_baseline()
-            self.journal.append("metadata edits discarded", agent_identifier=self.operator,
-                                software_version=self.software_version, outcome="discarded",
-                                detail={"scope": "metadata-only", "edits": events})
+                if events:
+                    self._check_baseline()
+                with self.journal._connection("rw") as connection:
+                    self.journal._verify(connection)
+                    if connection.execute("SELECT id FROM metadata_prepared WHERE id=1").fetchone() is not None:
+                        raise AuditError("Recover the pending metadata commit before discarding edits.")
+                    if events:
+                        self.journal._append(connection, "metadata edits discarded", agent_identifier=self.operator,
+                                             software_version=self.software_version, outcome="discarded",
+                                             detail={"scope": "metadata-only", "edits": events})
+                    connection.execute("DELETE FROM metadata_draft WHERE id=1")
+                    connection.commit()

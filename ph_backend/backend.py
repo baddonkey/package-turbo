@@ -282,6 +282,8 @@ class Backend(QObject):
         self._undo_history: UndoHistory | None = None
         self._undo_pending = None
         self._undo_identifier = ""
+        self._metadata_edit_before: bytes | None = None
+        self._metadata_draft_active = False
         self._retention_manager = None
         self._retention_preview = None
         self._pending_audit: list[dict] = []
@@ -372,7 +374,7 @@ class Backend(QObject):
     def _on_io_state(self):
         self.taskStateChanged.emit()
 
-    def _ensure_workspace(self) -> bool:
+    def _ensure_workspace(self, verify_files: bool = True) -> bool:
         pkg = self._pkg
         if pkg is None or pkg.read_only or pkg.root_dir is None:
             return False
@@ -385,23 +387,15 @@ class Backend(QObject):
                     raise AuditError("Metadata changed since the package was opened. Reopen before editing.")
                 self._workspace = MetadataWorkspace(pkg.metadata_path, pkg.root_dir, operator=self.auditOperator,
                                                     software_version=self._software_version)
-                if self._workspace.journal.verify().sequence == 0:
-                    initial_manifest = manifest(pkg.root_dir)
-                    self._workspace.check()
-                    self._workspace.journal.append(
-                        "package registration", agent_identifier=self.auditOperator,
-                        software_version=self._software_version,
-                        detail={"packageName": pkg.name, "schemaVersion": pkg.root.get("schemaVersion", ""),
-                                "deliveryType": pkg.delivery_type,
-                                "metadataSha256": hashlib.sha256(read_bytes(pkg.metadata_path)).hexdigest(),
-                                "manifest": initial_manifest,
-                                "note": "Current package state registered; earlier history is unknown."})
+            if self._workspace.has_draft() and not self._metadata_draft_active:
+                raise AuditError("A metadata draft is available. Recover it before editing or saving.")
             self._workspace.operator = self.auditOperator
             self._workspace.check()
             if self._file_workspace is not None:
                 self._file_workspace.operator = self.auditOperator
                 self._file_workspace.max_bytes = self.workspaceLimitGiB * 1024 ** 3
-                self._file_workspace.check()
+                if verify_files:
+                    self._file_workspace.check()
             elif has_file_draft(self._workspace.journal):
                 raise AuditError("A staged package is available. Recover it before editing or saving.")
             self._refresh_history()
@@ -411,6 +405,25 @@ class Backend(QObject):
         except (AuditError, OSError) as exc:
             self.message.emit("Metadaten-Historie", str(exc))
             return False
+
+    def _register_package_if_needed(self) -> None:
+        pkg = self._pkg
+        if pkg is None or pkg.root_dir is None or self._workspace is None:
+            return
+        records = self._workspace.journal.records()
+        if any(record["payload"]["eventType"] in {"package creation", "package registration"}
+               for record in records):
+            return
+        initial_manifest = manifest(pkg.root_dir)
+        self._workspace.check()
+        self._workspace.journal.append(
+            "package registration", agent_identifier=self.auditOperator,
+            software_version=self._software_version,
+            detail={"packageName": pkg.name, "schemaVersion": pkg.root.get("schemaVersion", ""),
+                    "deliveryType": pkg.delivery_type,
+                    "metadataSha256": hashlib.sha256(read_bytes(pkg.metadata_path)).hexdigest(),
+                    "manifest": initial_manifest,
+                    "note": "Current package state registered; earlier history is unknown."})
 
     def _get_audit_operator(self) -> str:
         return str(self.setting("audit/operator", "")).strip()
@@ -562,12 +575,30 @@ class Backend(QObject):
                 self.reveal(self._pkg.key(selected[0]))
 
     def apply_editor_operation(self, action) -> bool:
-        try:
-            result = self.stage_file_operation(lambda package: (action(package), True)[1])
-            return result is True and self._undo_pending is not None
-        except (AuditError, OSError) as exc:
-            self.message.emit("Bearbeitung fehlgeschlagen", str(exc))
+        pkg = self._pkg
+        if pkg is None:
             return False
+        if pkg.read_only:
+            self.message.emit("Schreibgeschützt", "Das Paket ist schreibgeschützt geöffnet.")
+            return False
+        if self._gui_blocked():
+            return False
+        if not self.auditOperator.strip():
+            self.auditOperatorRequired.emit()
+            return False
+        if not self._ensure_workspace(verify_files=False):
+            return False
+        if self._undo_history is None:
+            self._undo_history = UndoHistory(self._workspace.directory, self.workspaceLimitGiB * 1024 ** 3)
+        before_xml = etree.tostring(pkg.tree, encoding="UTF-8", xml_declaration=True)
+        try:
+            action(pkg)
+        except BaseException:
+            pkg.restore_xml(before_xml)
+            self._metadata_edit_before = None
+            raise
+        self._metadata_edit_before = before_xml
+        return True
 
     def _finish_undo_operation(self, label: str) -> str:
         if self._undo_pending is None:
@@ -605,21 +636,38 @@ class Backend(QObject):
         try:
             entry = history.redo_target() if redo else history.undo_target()
             snapshot = entry.after if redo else entry.before
-            if self._file_workspace is None:
-                self._file_workspace = FileWorkspace(self._workspace, self.workspaceLimitGiB * 1024 ** 3)
             event = {"event_type": "redo" if redo else "undo", "operator": self.auditOperator,
                      "detail": {"scope": "staged-package", "operationIdentifier": entry.identifier,
                                 "reversesOperationIdentifier": entry.identifier, "label": entry.label,
                                 "snapshotIdentifier": snapshot.identifier}}
 
-            def restore(package):
-                history.check(snapshot)
-                remove_staging_tree(package.file_root)
-                copy_tree(snapshot.directory, package.file_root)
-                snapshot.restore_modes(package.file_root)
-                package.restore_xml(snapshot.xml)
+            if snapshot.files is None:
+                pkg = self._pkg
+                before_xml = etree.tostring(pkg.tree, encoding="UTF-8", xml_declaration=True)
+                pkg.restore_xml(snapshot.xml)
+                try:
+                    if self._file_workspace is None:
+                        self._workspace.persist_draft(
+                            etree.tostring(pkg.tree, encoding="UTF-8", xml_declaration=True),
+                            self._pending_audit + [event])
+                        self._metadata_draft_active = True
+                    else:
+                        self._file_workspace.persist_metadata(pkg, self._pending_audit + [event])
+                except (AuditError, OSError):
+                    pkg.restore_xml(before_xml)
+                    raise
+            else:
+                if self._file_workspace is None:
+                    self._file_workspace = FileWorkspace(self._workspace, self.workspaceLimitGiB * 1024 ** 3)
 
-            self._file_workspace.stage_operation(self._pkg, restore, self._pending_audit + [event])
+                def restore(package):
+                    history.check(snapshot)
+                    remove_staging_tree(package.file_root)
+                    copy_tree(snapshot.directory, package.file_root)
+                    snapshot.restore_modes(package.file_root)
+                    package.restore_xml(snapshot.xml)
+
+                self._file_workspace.stage_operation(self._pkg, restore, self._pending_audit + [event])
         except (AuditError, OSError) as exc:
             self.message.emit("Paket rückgängig", str(exc))
             self.rebuild_navigators()
@@ -1037,6 +1085,8 @@ class Backend(QObject):
         self._opened_metadata = opened_metadata
         self._workspace = None
         self._file_workspace = None
+        self._metadata_edit_before = None
+        self._metadata_draft_active = False
         self._pending_audit = []
         self._full_issues = []
         self._had_full_run = False
@@ -1055,6 +1105,13 @@ class Backend(QObject):
         return True
 
     def _discard_current(self) -> bool:
+        if self._workspace is not None and self._pending_audit:
+            try:
+                self._workspace.operator = self.auditOperator
+                self._register_package_if_needed()
+            except (AuditError, OSError) as exc:
+                self.message.emit("Verwerfen fehlgeschlagen", str(exc))
+                return False
         if self._file_workspace is not None:
             try:
                 self._file_workspace.operator = self.auditOperator
@@ -1073,6 +1130,7 @@ class Backend(QObject):
                 self.message.emit("Verwerfen fehlgeschlagen", str(exc))
                 return False
         self._pending_audit = []
+        self._metadata_draft_active = False
         return True
 
     @Slot(result=bool)
@@ -1102,6 +1160,7 @@ class Backend(QObject):
             recover_file_commit(self._pkg.root_dir, self.auditOperator, self._software_version)
             self._workspace = MetadataWorkspace(self._pkg.metadata_path, self._pkg.root_dir,
                                                 operator=self.auditOperator, software_version=self._software_version)
+            metadata_draft = self._workspace.load_draft()
             pkg = SipPackage.open_metadata(self._pkg.metadata_path)
         except TaskCancelled:
             raise
@@ -1125,6 +1184,22 @@ class Backend(QObject):
                 self.message.emit("Wiederherstellung fehlgeschlagen", str(exc))
                 self._file_workspace = None
                 return False
+            self._set_dirty(True)
+            self.changesTable.set_records([
+                {"time": "", "object": event["detail"].get("object", ""),
+                 "objectName": event["detail"].get("objectName", ""),
+                 "field": event["detail"].get("field", ""),
+                 "oldValue": event["detail"].get("oldValue", ""),
+                 "newValue": event["detail"].get("newValue", ""), "key": 0}
+                for event in self._pending_audit])
+            self.rebuild_navigators()
+            self.editor.set_package(pkg)
+            self._run_continuous_validation()
+        elif metadata_draft is not None:
+            self._workspace = workspace
+            snapshot, self._pending_audit = metadata_draft
+            pkg.restore_xml(snapshot)
+            self._metadata_draft_active = True
             self._set_dirty(True)
             self.changesTable.set_records([
                 {"time": "", "object": event["detail"].get("object", ""),
@@ -1169,6 +1244,7 @@ class Backend(QObject):
         if self.require_writable() is None:
             return False
         try:
+            self._register_package_if_needed()
             data = etree.tostring(self._pkg.tree, encoding="UTF-8", xml_declaration=True)
             if self._file_workspace is not None:
                 self._file_workspace.commit(self._pkg, self._pending_audit)
@@ -1182,6 +1258,7 @@ class Backend(QObject):
             self._refresh_history()
             return False
         self._pending_audit = []
+        self._metadata_draft_active = False
         self._opened_metadata = read_bytes(self._pkg.metadata_path)
         self._set_dirty(False)
         # The view 'Änderungen' only lists changes since the last save.
@@ -1568,19 +1645,40 @@ class Backend(QObject):
         self._run_continuous_validation()
         self._set_status(description or self._status)
 
-    @io_task()
     def _on_field_edited(self, key: int, kind: str, name: str, field: str, old: str, new: str) -> None:
-        self._record_change(key, kind, name, field, old, new)
         pkg = self._pkg
+        if pkg is None:
+            self._metadata_edit_before = None
+            return
+        before_xml, self._metadata_edit_before = self._metadata_edit_before, None
+        if before_xml is not None and self._undo_history is not None:
+            after_xml = etree.tostring(pkg.tree, encoding="UTF-8", xml_declaration=True)
+            self._undo_pending = (self._undo_history.capture_metadata(before_xml),
+                                  self._undo_history.capture_metadata(after_xml))
+            self._undo_identifier = "urn:uuid:" + str(uuid.uuid4())
+        self._record_change(key, kind, name, field, old, new)
         el = pkg.element(key)
         if el is not None:
             label = pkg.display_name(el)
             for model in (self.classificationModel, self.dossierModel, self.packageModel):
                 model.update_label(key, label)
         self._set_dirty(True)
-        self._persist_file_draft()
-        self._run_continuous_validation()
-        self.editor.refresh()
+        if self._file_workspace is not None:
+            try:
+                self._file_workspace.persist_metadata(pkg, self._pending_audit)
+            except (AuditError, OSError) as exc:
+                self.message.emit("Arbeitskopie", str(exc))
+        else:
+            try:
+                self._workspace.persist_draft(
+                    etree.tostring(pkg.tree, encoding="UTF-8", xml_declaration=True), self._pending_audit)
+                self._metadata_draft_active = True
+            except (AuditError, OSError) as exc:
+                self.message.emit("Arbeitskopie", str(exc))
+        local_list_edit = field in {schema.label_for("zusatzDaten"), schema.label_for("eigenschaft")}
+        if not local_list_edit:
+            self._run_continuous_validation()
+            self.editor.refresh()
 
     def _record_change(self, key: int, kind: str, name: str, field: str, old: str, new: str) -> None:
         operation_identifier = self._finish_undo_operation(field if field != "Struktur" else new)

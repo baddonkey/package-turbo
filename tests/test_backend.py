@@ -138,11 +138,11 @@ def test_existing_package_registers_current_baseline_without_claiming_creation(o
     assert opened.save()
 
     records = AuditJournal(Path(opened.auditCompanion) / "journal.sqlite3", read_only=True).records()
-    assert records[0]["payload"]["eventType"] == "package registration"
-    detail = records[0]["payload"]["detail"]
+    registration = next(record for record in records if record["payload"]["eventType"] == "package registration")
+    detail = registration["payload"]["detail"]
     assert detail["note"] == "Current package state registered; earlier history is unknown."
     assert detail["manifest"]["header/metadata.xml"]["sha256"]
-    assert records[-1]["payload"]["eventType"] == "package commit"
+    assert records[-1]["payload"]["eventType"] == "metadata commit"
 
 
 def test_native_creation_dialog_renders_version_choices(backend, app, tmp_path, sip_dir, monkeypatch):
@@ -339,6 +339,47 @@ def test_native_creation_dialog_renders_version_choices(backend, app, tmp_path, 
 
     backend.set_package(SipPackage.open_folder(sip_dir))
     assert save_item.isEnabled()
+    dossier = next(backend.package.iter_kind("dossier"))
+    dossier_key = backend.package.key(dossier)
+    backend.editor.showElement(dossier_key)
+    app.processEvents()
+    assert backend.editor.currentTab == "dossier"
+    dossier_section = next(section for section in backend.editor.sections if section["key"] == dossier_key)
+    assert dossier_section["canHaveAdditionalData"]
+    QTest.qWait(50)
+    visual_names = {item.objectName(): item for item in visual_items(window.contentItem())}
+    add_data = visual_names.get(f"addAdditionalDataButton-{dossier_key}")
+    assert add_data is not None and QMetaObject.invokeMethod(add_data, "clicked")
+    app.processEvents()
+    visual_names = {item.objectName(): item for item in visual_items(window.contentItem())}
+    name_field = visual_names.get(f"additionalDataName-{dossier_key}-0")
+    value_field = visual_names.get(f"additionalDataValue-{dossier_key}-0")
+    assert name_field is not None and value_field is not None
+    assert QMetaObject.invokeMethod(name_field, "forceActiveFocus")
+    app.processEvents()
+    assert name_field.property("activeFocus")
+    name_field.setProperty("text", "Signatur")
+    app.processEvents()
+    QTest.keyClick(window, Qt.Key.Key_Tab)
+    QTest.qWait(30)
+    assert value_field.property("activeFocus")
+    assert value_field.property("text") == ""
+    assert backend.package.additional_data(dossier) == [("Signatur", "")]
+    value_field.setProperty("text", "A-17")
+    app.processEvents()
+    QTest.keyClick(window, Qt.Key.Key_Tab)
+    QTest.qWait(50)
+    assert backend.package.additional_data(dossier) == [("Signatur", "A-17")]
+    progress_dialog = window.findChild(QObject, "progressDialog")
+    assert progress_dialog is not None
+    backend._set_busy(True)
+    QTest.qWait(800)
+    assert not progress_dialog.property("visible")
+    QTest.qWait(350)
+    assert progress_dialog.property("visible")
+    backend._set_busy(False)
+    app.processEvents()
+    assert not progress_dialog.property("visible")
     for menu_name in ("classificationMenu", "packageNavMenu"):
         navigator_menu = window.findChild(QObject, menu_name)
         assert QMetaObject.invokeMethod(navigator_menu, "open")
@@ -372,11 +413,15 @@ def test_native_creation_dialog_renders_version_choices(backend, app, tmp_path, 
     tabs.setProperty("currentIndex", 5)
     app.processEvents()
     assert window.findChild(QObject, "historyView") is not None
-    assert [row["eventType"] for row in backend.historyTable.records()] == [
-        "package registration",
-        "package draft staging", "package draft staging", "package draft staging",
-        "package commit preparation", "package operation", "metadata modification", "package commit"]
-    assert "Audited native edit" in backend.historyDetails(5)
+    history_records = backend.historyTable.records()
+    event_types = [row["eventType"] for row in history_records]
+    assert event_types[:3] == ["metadata draft staging"] * 3
+    assert event_types[3] == "package registration"
+    assert event_types[4:] == ["metadata commit preparation", "metadata modification",
+                               "metadata modification", "metadata modification", "metadata commit"]
+    title_event = next(index for index, row in enumerate(history_records)
+                       if row["eventType"] == "metadata modification" and row["newValue"] == "Audited native edit")
+    assert "Audited native edit" in backend.historyDetails(title_event)
     preferences = window.findChild(QObject, "preferencesDialog")
     assert QMetaObject.invokeMethod(preferences, "open")
     app.processEvents()
@@ -512,6 +557,8 @@ def test_native_creation_dialog_renders_version_choices(backend, app, tmp_path, 
     assert previewed == [True] and not backend.busy and not backend.dirty
     assert not (sip_dir / "content/CancelledNative").exists()
     current = backend.package
+    content = next(element for element in current.iter_kind("ordner") if current.text(element, "name") == "content")
+    FileController(backend).newFolder(current.key(content), "ProtectedCommitStage")
     backend.editor.setField(current.key(next(current.iter_kind("dossier"))), "titel", "Native protected save")
     workspace = backend._file_workspace
     finish = workspace._finish
@@ -524,6 +571,10 @@ def test_native_creation_dialog_renders_version_choices(backend, app, tmp_path, 
 
     monkeypatch.setattr(workspace, "_finish", commit_preview)
     assert backend.save() and protected == [False]
+    current = backend.package
+    content = next(element for element in current.iter_kind("ordner") if current.text(element, "name") == "content")
+    FileController(backend).newFolder(current.key(content), "RetentionSecondCommit")
+    assert backend.save()
     from ph_backend.file_workspace import manifest
 
     before_cleanup = manifest(backend.package.root_dir)
@@ -1045,7 +1096,7 @@ def test_failed_audit_completion_keeps_dirty_and_can_recover(opened, monkeypatch
     pkg = opened.package
     dossier = next(pkg.iter_kind("dossier"))
     opened.editor.setField(pkg.key(dossier), "titel", "Recovered application edit")
-    workspace = opened._file_workspace
+    workspace = opened._workspace
     finish = workspace._finish
 
     def fail(*args, **kwargs):
@@ -1059,7 +1110,7 @@ def test_failed_audit_completion_keeps_dirty_and_can_recover(opened, monkeypatch
     assert opened.recoverMetadata()
     assert not opened.dirty
     assert opened.package.text(next(opened.package.iter_kind("dossier")), "titel") == "Recovered application edit"
-    assert any(row["eventType"] == "package commit recovery" for row in opened.historyTable.records())
+    assert any(row["eventType"] == "metadata commit recovery" for row in opened.historyTable.records())
 
 
 def test_busy_validation_blocks_metadata_edits(opened):
@@ -1073,6 +1124,25 @@ def test_busy_validation_blocks_metadata_edits(opened):
         assert not opened.dirty
     finally:
         opened._set_busy(False)
+
+
+def test_first_metadata_edit_uses_xml_draft_without_package_staging(opened, monkeypatch):
+    pkg = opened.package
+    dossier = next(pkg.iter_kind("dossier"))
+    key = pkg.key(dossier)
+    busy_states = []
+    opened.busyChanged.connect(lambda: busy_states.append(opened.busy))
+
+    monkeypatch.setattr(opened, "stage_file_operation",
+                        lambda *args, **kwargs: pytest.fail("metadata edit staged the full package"))
+    opened.editor.setField(key, "titel", "Fast metadata edit")
+
+    assert pkg.text(dossier, "titel") == "Fast metadata edit"
+    assert opened._file_workspace is None
+    assert opened._workspace.has_draft()
+    assert opened._metadata_draft_active
+    assert busy_states == []
+    assert opened.canUndo
 
 
 def test_package_metadata_undo_redo_and_audit_link(opened):
@@ -1178,23 +1248,25 @@ def test_undo_structure_and_notes(opened):
 
 def test_undo_rejects_snapshot_tampering_and_external_changes(opened):
     pkg = opened.package
-    dossier = next(pkg.iter_kind("dossier"))
-    opened.editor.setField(pkg.key(dossier), "titel", "Protected title")
+    content = next(element for element in pkg.iter_kind("ordner") if pkg.text(element, "name") == "content")
+    FileController(opened).newFolder(pkg.key(content), "ProtectedUndoFolder")
     entry = opened._undo_history.entries[-1]
     (entry.before.directory / "header/metadata.xml").chmod(0o600)
     (entry.before.directory / "header/metadata.xml").write_bytes(b"tampered")
     assert not opened.undo()
-    assert pkg.text(next(pkg.iter_kind("dossier")), "titel") == "Protected title"
+    assert (pkg.file_root / "content/ProtectedUndoFolder").is_dir()
     pkg.metadata_path.write_bytes(b"external metadata")
     assert not opened.undo()
 
 
 def test_after_snapshot_failure_rolls_back_operation(opened, monkeypatch):
     from ph_backend.audit import AuditError
+    from ph_backend import structure
 
     pkg = opened.package
     dossier = next(pkg.iter_kind("dossier"))
     opened.editor.setField(pkg.key(dossier), "titel", "Earlier edit")
+    document_count = len(pkg.children(dossier, "dokument"))
     history = opened._undo_history
     capture = history.capture
     calls = []
@@ -1206,8 +1278,11 @@ def test_after_snapshot_failure_rolls_back_operation(opened, monkeypatch):
         return capture(*args, **kwargs)
 
     monkeypatch.setattr(history, "capture", fail_after)
-    opened.editor.setField(pkg.key(dossier), "titel", "Must roll back")
-    assert pkg.text(next(pkg.iter_kind("dossier")), "titel") == "Earlier edit"
+    with pytest.raises(AuditError, match="Injected after-snapshot failure"):
+        opened.stage_file_operation(lambda package: structure.add_objects(package, dossier, "dokument", 1))
+    restored_dossier = next(pkg.iter_kind("dossier"))
+    assert pkg.text(restored_dossier, "titel") == "Earlier edit"
+    assert len(pkg.children(restored_dossier, "dokument")) == document_count
     assert len(history.entries) == 1
     assert opened.changesTable.total == 1
 
@@ -1320,7 +1395,8 @@ def test_gui_remains_responsive_during_snapshot_copy(opened, app, monkeypatch):
     timer.start()
     try:
         pkg = opened.package
-        opened.editor.setField(pkg.key(next(pkg.iter_kind("dossier"))), "titel", "Responsive edit")
+        content = next(element for element in pkg.iter_kind("ordner") if pkg.text(element, "name") == "content")
+        FileController(opened).newFolder(pkg.key(content), "ResponsiveOperation")
     finally:
         timer.stop()
         released.set()
@@ -1375,6 +1451,8 @@ def test_prepared_commit_rejects_gui_cancellation(opened, monkeypatch):
     from ph_backend.processing import current_control
 
     pkg = opened.package
+    content = next(element for element in pkg.iter_kind("ordner") if pkg.text(element, "name") == "content")
+    FileController(opened).newFolder(pkg.key(content), "PreparedCommitOperation")
     opened.editor.setField(pkg.key(next(pkg.iter_kind("dossier"))), "titel", "Protected commit")
     workspace = opened._file_workspace
     finish = workspace._finish
@@ -1420,28 +1498,25 @@ def test_worker_events_cannot_reenter_package_mutations(opened, monkeypatch):
     timer.start()
     try:
         pkg = opened.package
-        opened.editor.setField(pkg.key(next(pkg.iter_kind("dossier"))), "titel", "Guarded edit")
+        content = next(element for element in pkg.iter_kind("ordner") if pkg.text(element, "name") == "content")
+        FileController(opened).newFolder(pkg.key(content), "GuardedOperation")
     finally:
         timer.stop()
         released.set()
     assert results == [False, False] and opened.package is pkg
 
 
-def test_cancel_before_metadata_edit_has_no_failure_dialog(opened, monkeypatch):
-    import ph_backend.processing as processing
-
-    read = processing.read_bytes
-
-    def cancel_read(path):
-        processing.current_control().cancel()
-        return read(path)
-
-    monkeypatch.setattr("ph_backend.backend.read_bytes", cancel_read)
+def test_metadata_edit_does_not_start_progress_task(opened):
     pkg = opened.package
-    old = pkg.text(next(pkg.iter_kind("dossier")), "titel")
-    opened.editor.setField(pkg.key(next(pkg.iter_kind("dossier"))), "titel", "Cancelled edit")
-    assert not opened.messages and not opened.dirty
-    assert pkg.text(next(pkg.iter_kind("dossier")), "titel") == old
+    dossier = next(pkg.iter_kind("dossier"))
+    busy_states = []
+    opened.busyChanged.connect(lambda: busy_states.append(opened.busy))
+
+    opened.editor.setField(pkg.key(dossier), "titel", "Quiet edit")
+
+    assert pkg.text(dossier, "titel") == "Quiet edit"
+    assert opened.dirty and busy_states == []
+    assert opened._workspace.has_draft()
 
 
 def test_stale_package_object_is_not_published(opened, tmp_path):
@@ -1771,6 +1846,28 @@ def test_saved_file_draft_can_be_resumed_after_restart(opened, backend, sip_dir,
     assert (replacement.package.file_root / "content/Resumable").is_dir()
     assert replacement.save()
     assert (sip_dir / "content/Resumable").is_dir()
+
+
+def test_metadata_only_draft_can_be_resumed_after_restart(opened, sip_dir, tmp_path):
+    from ph_backend.backend import Backend
+
+    pkg = opened.package
+    dossier = next(pkg.iter_kind("dossier"))
+    opened.editor.setField(pkg.key(dossier), "titel", "Recoverable metadata")
+    assert opened._workspace.has_draft()
+    assert pkg.file_root == pkg.root_dir
+    assert "Recoverable metadata" not in pkg.metadata_path.read_text(encoding="utf-8")
+
+    replacement = Backend(QSettings(str(tmp_path / "metadata-resumed.ini"), QSettings.Format.IniFormat))
+    replacement.auditOperator = "resuming-operator"
+    replacement.openPackage(QUrl.fromLocalFile(str(sip_dir)), False)
+
+    assert replacement.recoverMetadata()
+    assert replacement.dirty
+    assert replacement._file_workspace is None
+    assert replacement.package.text(next(replacement.package.iter_kind("dossier")), "titel") == "Recoverable metadata"
+    assert replacement.save()
+    assert "Recoverable metadata" in sip_dir.joinpath("header", "metadata.xml").read_text(encoding="utf-8")
 
 
 def test_failed_initial_file_operation_does_not_block_metadata_save(opened):
