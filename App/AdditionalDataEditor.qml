@@ -11,15 +11,67 @@ ColumnLayout {
     property bool editable: false
     property bool fileProperties: false
     property var rows: []
+    property var focusedFields: ({})
+    property bool preserveRows: false
+    property bool localEditPending: false
+    property int currentPackageToken: editor.packageToken
     objectName: fileProperties ? "filePropertiesEditor-" + elementKey : "additionalDataEditor-" + elementKey
 
     spacing: 4
 
-    onItemsChanged: rows = items.map(i => ({ name: i.name, value: i.value }))
+    onItemsChanged: {
+        const incoming = items.map(i => ({ name: i.name, value: i.value }))
+        if (localEditPending) {
+            if (sameRows(rows, incoming))
+                localEditPending = false
+            return
+        }
+        if (!preserveRows)
+            rows = incoming
+    }
+    onCurrentPackageTokenChanged: {
+        focusedFields = ({})
+        preserveRows = false
+        localEditPending = false
+        syncRowsTimer.stop()
+        rows = items.map(i => ({ name: i.name, value: i.value }))
+    }
+
+    function sameRows(left, right) {
+        return left.length === right.length && left.every((row, index) =>
+            row.name === right[index].name && row.value === right[index].value)
+    }
+
+    function trackFieldFocus(key, focused) {
+        const fields = Object.assign({}, focusedFields)
+        if (focused) {
+            fields[key] = true
+            preserveRows = true
+            syncRowsTimer.stop()
+        } else {
+            delete fields[key]
+        }
+        focusedFields = fields
+        if (!focused && Object.keys(fields).length === 0)
+            syncRowsTimer.restart()
+    }
+
+    Timer {
+        id: syncRowsTimer
+        interval: 250
+        repeat: false
+        onTriggered: {
+            if (Object.keys(root.focusedFields).length === 0 && !root.localEditPending) {
+                root.preserveRows = false
+                root.rows = root.items.map(i => ({ name: i.name, value: i.value }))
+            }
+        }
+    }
 
     function commit() {
         const key = elementKey
         const token = editor.packageToken
+        localEditPending = true
         const values = rows.filter(row => row.name.trim() || (!fileProperties && row.value.trim()))
                             .map(row => ({ name: row.name, value: row.value }))
         Qt.callLater(() => {
@@ -51,10 +103,14 @@ ColumnLayout {
         }
         Item { Layout.fillWidth: true }
         Button {
+            objectName: "addAdditionalDataButton-" + root.elementKey
             text: root.fileProperties ? qsTr("+ Eigenschaft") : qsTr("+ Merkmal")
             flat: true
             visible: root.editable
-            onClicked: root.rows = root.rows.concat([{ name: "", value: "" }])
+            onClicked: {
+                root.localEditPending = true
+                root.rows = root.rows.concat([{ name: "", value: "" }])
+            }
         }
     }
 
@@ -69,11 +125,14 @@ ColumnLayout {
             spacing: 8
 
             TextField {
+                objectName: (root.fileProperties ? "filePropertyName-" : "additionalDataName-")
+                            + root.elementKey + "-" + merkmalRow.index
                 Layout.preferredWidth: 230
                 text: merkmalRow.modelData.name
                 placeholderText: qsTr("Name")
                 readOnly: !root.editable
                 selectByMouse: true
+                onActiveFocusChanged: root.trackFieldFocus("name-" + merkmalRow.index, activeFocus)
                 onEditingFinished: {
                     if (text === root.rows[merkmalRow.index].name)
                         return
@@ -82,11 +141,14 @@ ColumnLayout {
                 }
             }
             TextField {
+                objectName: (root.fileProperties ? "filePropertyValue-" : "additionalDataValue-")
+                            + root.elementKey + "-" + merkmalRow.index
                 Layout.fillWidth: true
                 text: merkmalRow.modelData.value
                 placeholderText: qsTr("Wert")
                 readOnly: !root.editable
                 selectByMouse: true
+                onActiveFocusChanged: root.trackFieldFocus("value-" + merkmalRow.index, activeFocus)
                 onEditingFinished: {
                     if (text === root.rows[merkmalRow.index].value)
                         return

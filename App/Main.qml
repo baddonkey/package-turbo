@@ -1035,7 +1035,12 @@ ApplicationWindow {
             Qt.callLater(window.revealInNavigators, key)
         }
         function onBusyChanged() {
-            if (backend.busy) progressDialog.open(); else progressDialog.close()
+            if (backend.busy) {
+                progressDialogDelay.restart()
+            } else {
+                progressDialogDelay.stop()
+                progressDialog.close()
+            }
         }
         function onValidityPrompt() {
             validityDialog.open()
@@ -1044,6 +1049,13 @@ ApplicationWindow {
             inputDialog.ask(qsTr("Identität bestätigen"), qsTr("Bearbeitet durch"), backend.auditOperator,
                             name => { backend.auditOperator = name })
         }
+    }
+
+    Timer {
+        id: progressDialogDelay
+        interval: 1000
+        repeat: false
+        onTriggered: if (backend.busy) progressDialog.open()
     }
 
     // ---------------------------------------------------------------- dialogs
@@ -1340,6 +1352,7 @@ ApplicationWindow {
 
     Dialog {
         id: progressDialog
+        objectName: "progressDialog"
         title: qsTr("Bitte warten")
         anchors.centerIn: parent
         width: 380

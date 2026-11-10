@@ -13,7 +13,8 @@ from lxml import etree
 
 from .audit import AuditError, AuditJournal
 from .workspace import MetadataWorkspace, companion_directory
-from .processing import copy_tree, critical_section, current_control, protect_commit, read_bytes, run_background, tree_size
+from .processing import (MAX_METADATA_BYTES, copy_tree, critical_section, current_control, digest_bytes,
+                        protect_commit, read_bytes, run_background, tree_size)
 
 
 def manifest(root: Path) -> dict:
@@ -264,6 +265,7 @@ class FileWorkspace:
             self.journal._verify(connection)
             connection.execute("INSERT OR REPLACE INTO package_draft VALUES (1, ?, ?, ?)",
                                (baseline_json, snapshot_json, events_json))
+            connection.execute("DELETE FROM metadata_draft WHERE id=1")
             self.journal._append(connection, "package draft staging", agent_identifier=self.operator,
                                  software_version=self.software_version,
                                  detail={"scope": "staged-package", "snapshotSha256": self.metadata._hash(snapshot_json.encode()),
@@ -279,6 +281,70 @@ class FileWorkspace:
             if draft is None:
                 raise AuditError("There is no staged package.")
             self._persist(pkg, json.loads(draft["baseline"]), events)
+
+    def persist_metadata(self, pkg, events: list[dict]):
+        if pkg.file_root != self.stage:
+            raise AuditError("Metadata-only updates require the active staged package.")
+        xml = etree.tostring(pkg.tree, encoding="UTF-8", xml_declaration=True)
+        if len(xml) > MAX_METADATA_BYTES:
+            raise AuditError(f"metadata.xml exceeds the {MAX_METADATA_BYTES}-byte limit.")
+        try:
+            events_json = rfc8785.dumps(events).decode("utf-8")
+        except (ValueError, TypeError) as exc:
+            raise AuditError("Package events cannot be encoded as canonical JSON.") from exc
+
+        with self.metadata._locked():
+            self.metadata._check_baseline()
+            draft = self._draft()
+            if draft is None:
+                raise AuditError("There is no staged package.")
+            baseline_json = draft["baseline"]
+            baseline = json.loads(baseline_json)
+            snapshot = json.loads(draft["snapshot"])
+            metadata_key = "header/metadata.xml"
+            previous_entry = snapshot.get(metadata_key)
+            if not isinstance(previous_entry, dict) or previous_entry.get("type") != "file":
+                raise AuditError("The staged package has no metadata file entry.")
+            metadata_path = self.stage / metadata_key
+            previous_xml = read_bytes(metadata_path)
+            if (len(previous_xml) != previous_entry.get("size")
+                    or digest_bytes(previous_xml) != previous_entry.get("sha256")):
+                raise AuditError("Staged metadata changed outside this workspace.")
+
+            updated_snapshot = dict(snapshot)
+            updated_snapshot[metadata_key] = {"type": "file", "size": len(xml), "sha256": digest_bytes(xml)}
+            if sum(entry.get("size", 0) for entry in updated_snapshot.values()) > self.max_bytes:
+                raise AuditError("The package workspace storage limit would be exceeded.")
+            snapshot_json = rfc8785.dumps(updated_snapshot).decode("utf-8")
+            temporary = None
+            try:
+                with tempfile.NamedTemporaryFile(dir=metadata_path.parent, prefix=".metadata-", suffix=".tmp",
+                                                 delete=False) as stream:
+                    temporary = Path(stream.name)
+                    stream.write(xml)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.replace(temporary, metadata_path)
+                self._publish_draft(baseline, updated_snapshot, baseline_json, snapshot_json, events_json)
+            except BaseException:
+                try:
+                    current = self._draft()
+                    committed = (current is not None
+                                 and json.loads(current["snapshot"]).get(metadata_key)
+                                 == updated_snapshot[metadata_key])
+                except (AuditError, OSError):
+                    committed = False
+                if not committed:
+                    rollback = metadata_path.with_name(".metadata-rollback-" + uuid.uuid4().hex)
+                    try:
+                        rollback.write_bytes(previous_xml)
+                        os.replace(rollback, metadata_path)
+                    finally:
+                        rollback.unlink(missing_ok=True)
+                raise
+            finally:
+                if temporary is not None:
+                    temporary.unlink(missing_ok=True)
 
     def restore(self, pkg) -> list[dict]:
         with self.metadata._locked():

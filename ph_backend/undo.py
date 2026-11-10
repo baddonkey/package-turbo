@@ -15,9 +15,9 @@ from .processing import copy_file, critical_section, current_control, digest_byt
 @dataclass(frozen=True)
 class PackageSnapshot:
     identifier: str
-    directory: Path
+    directory: Path | None
     xml: bytes
-    files: dict
+    files: dict | None
     modes: dict = field(default_factory=dict)
 
     def restore_modes(self, target: Path):
@@ -104,7 +104,14 @@ class UndoHistory:
             self._remove_references(target.parent)
             raise
 
+    def capture_metadata(self, xml: bytes) -> PackageSnapshot:
+        return PackageSnapshot(uuid.uuid4().hex, None, xml, None)
+
     def check(self, snapshot: PackageSnapshot) -> None:
+        if snapshot.files is None:
+            if snapshot.directory is not None:
+                raise AuditError("The metadata undo snapshot has an unexpected file directory.")
+            return
         if manifest(snapshot.directory) != snapshot.files:
             raise AuditError("The undo snapshot has changed. No reversal was applied.")
         if digest_bytes(read_bytes(snapshot.directory / "header/metadata.xml")) != digest_bytes(snapshot.xml):
@@ -131,7 +138,7 @@ class UndoHistory:
         return True
 
     def release(self, snapshot: PackageSnapshot):
-        if snapshot.directory.parent.exists():
+        if snapshot.directory is not None and snapshot.directory.parent.exists():
             self._remove_references(snapshot.directory.parent)
 
     def _remove_references(self, directory: Path):
